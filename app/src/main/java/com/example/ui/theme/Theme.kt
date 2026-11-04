@@ -1,55 +1,39 @@
 package com.example.ui.theme
 
-import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.darkColorScheme
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.graphics.Color
 
-private val DarkColorScheme = darkColorScheme(
-    primary = PrimaryBlueLight,
-    onPrimary = NavyDark,
-    primaryContainer = PrimaryBlueDark,
-    onPrimaryContainer = Color.White,
-    secondary = AccentCyan,
-    onSecondary = NavyDark,
-    background = DarkBackground,
-    onBackground = DarkOnSurface,
-    surface = DarkSurface,
-    onSurface = DarkOnSurface,
-    surfaceVariant = DarkSurfaceVariant,
-    onSurfaceVariant = DarkOnSurfaceMuted,
-    error = ErrorRed,
-    onError = Color.White
-)
-
-private val LightColorScheme = lightColorScheme(
+// White & Light Blue Mix Color Scheme
+private val WhiteLightBlueColorScheme = lightColorScheme(
     primary = PrimaryBlue,
     onPrimary = Color.White,
-    primaryContainer = SenderBubbleLight,
+    primaryContainer = LightBlueTint,
     onPrimaryContainer = PrimaryBlueDark,
-    secondary = AccentTeal,
-    onSecondary = Color.White,
-    background = LightBackground,
-    onBackground = LightOnSurface,
-    surface = LightSurface,
-    onSurface = LightOnSurface,
-    surfaceVariant = LightSurfaceVariant,
-    onSurfaceVariant = LightOnSurfaceMuted,
+    secondary = PrimaryBlueLight,
+    onSecondary = TextDark,
+    secondaryContainer = IceBlue,
+    onSecondaryContainer = PrimaryBlueDark,
+    background = AliceBlue,
+    onBackground = TextDark,
+    surface = PureWhite,
+    onSurface = TextDark,
+    surfaceVariant = IceBlue,
+    onSurfaceVariant = TextDarkMuted,
+    outline = SoftBlueBorder,
+    outlineVariant = BubbleBorderColor,
     error = ErrorRed,
     onError = Color.White
 )
 
 @Composable
 fun NexChatTheme(
-    darkTheme: Boolean = isSystemInDarkTheme(),
+    darkTheme: Boolean = false, // Emphasize the requested White and Light Blue mix theme
     content: @Composable () -> Unit
 ) {
-    val colorScheme = if (darkTheme) DarkColorScheme else LightColorScheme
-
     MaterialTheme(
-        colorScheme = colorScheme,
+        colorScheme = WhiteLightBlueColorScheme,
         typography = Typography,
         content = content
     )

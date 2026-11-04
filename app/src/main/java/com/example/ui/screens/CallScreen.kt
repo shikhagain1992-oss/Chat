@@ -4,6 +4,7 @@ import android.content.Context
 import android.content.Intent
 import android.media.AudioManager
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -53,13 +54,17 @@ import com.example.data.remote.FirebaseManager
 import com.example.data.repository.CallRepository
 import com.example.service.NexChatCallService
 import com.example.ui.components.UserAvatar
-import com.example.ui.theme.DarkBackground
+import com.example.ui.theme.AliceBlue
 import com.example.ui.theme.ErrorRed
-import com.example.ui.theme.NavyDark
-import com.example.ui.theme.NavySurface
+import com.example.ui.theme.IceBlue
+import com.example.ui.theme.LightBlueTint
 import com.example.ui.theme.OnlineGreen
 import com.example.ui.theme.PrimaryBlue
 import com.example.ui.theme.PrimaryBlueLight
+import com.example.ui.theme.PureWhite
+import com.example.ui.theme.SoftBlueBorder
+import com.example.ui.theme.TextDark
+import com.example.ui.theme.TextDarkMuted
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
@@ -83,7 +88,6 @@ fun CallScreen(
     var callDurationSeconds by remember { mutableIntStateOf(0) }
     var isConnected by remember { mutableStateOf(false) }
 
-    // Audio manager for speakerphone
     val audioManager = remember {
         context.getSystemService(Context.AUDIO_SERVICE) as? AudioManager
     }
@@ -92,13 +96,11 @@ fun CallScreen(
         audioManager?.isSpeakerphoneOn = isSpeakerOn
     }
 
-    // Call state monitor
     LaunchedEffect(callRecord?.status) {
         val status = callRecord?.status
         if (status == "accepted") {
             isConnected = true
         } else if (status == "ended" || status == "rejected") {
-            // Stop service and navigate back
             val stopIntent = Intent(context, NexChatCallService::class.java).apply {
                 action = NexChatCallService.ACTION_END_CALL
             }
@@ -107,7 +109,6 @@ fun CallScreen(
         }
     }
 
-    // Call duration timer once connected
     LaunchedEffect(isConnected) {
         if (isConnected) {
             while (true) {
@@ -117,7 +118,6 @@ fun CallScreen(
         }
     }
 
-    // Clean up service on dispose
     DisposableEffect(Unit) {
         onDispose {
             val stopIntent = Intent(context, NexChatCallService::class.java).apply {
@@ -143,12 +143,11 @@ fun CallScreen(
             .fillMaxSize()
             .background(
                 Brush.verticalGradient(
-                    listOf(NavyDark, NavySurface, DarkBackground)
+                    listOf(PureWhite, AliceBlue, IceBlue)
                 )
             )
             .testTag("call_screen")
     ) {
-        // Video Preview Mock or Full Avatar
         Column(
             modifier = Modifier
                 .fillMaxSize()
@@ -162,9 +161,10 @@ fun CallScreen(
                 Card(
                     modifier = Modifier
                         .size(240.dp)
+                        .border(2.dp, SoftBlueBorder, RoundedCornerShape(24.dp))
                         .testTag("call_video_preview"),
                     shape = RoundedCornerShape(24.dp),
-                    colors = CardDefaults.cardColors(containerColor = NavySurface)
+                    colors = CardDefaults.cardColors(containerColor = PureWhite)
                 ) {
                     Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                         UserAvatar(
@@ -177,26 +177,34 @@ fun CallScreen(
                                 .align(Alignment.TopEnd)
                                 .padding(12.dp)
                                 .clip(RoundedCornerShape(8.dp))
-                                .background(Color.Black.copy(alpha = 0.6f))
+                                .background(PrimaryBlue.copy(alpha = 0.85f))
                                 .padding(horizontal = 8.dp, vertical = 4.dp)
                         ) {
-                            Text("HD 1080p", color = PrimaryBlueLight, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                            Text("HD Call", color = Color.White, fontSize = 11.sp, fontWeight = FontWeight.Bold)
                         }
                     }
                 }
             } else {
-                UserAvatar(
-                    photoUrl = contactPhoto,
-                    displayName = contactName,
-                    size = 140.dp
-                )
+                Box(
+                    modifier = Modifier
+                        .size(144.dp)
+                        .clip(CircleShape)
+                        .border(4.dp, SoftBlueBorder, CircleShape),
+                    contentAlignment = Alignment.Center
+                ) {
+                    UserAvatar(
+                        photoUrl = contactPhoto,
+                        displayName = contactName,
+                        size = 138.dp
+                    )
+                }
             }
 
             Spacer(modifier = Modifier.height(24.dp))
 
             Text(
                 text = contactName,
-                color = Color.White,
+                color = TextDark,
                 fontSize = 26.sp,
                 fontWeight = FontWeight.Bold
             )
@@ -211,14 +219,14 @@ fun CallScreen(
                 } else {
                     if (isCaller) "Ringing..." else "Connecting..."
                 },
-                color = if (isConnected) OnlineGreen else PrimaryBlueLight,
+                color = if (isConnected) OnlineGreen else PrimaryBlue,
                 fontSize = 16.sp,
                 fontWeight = FontWeight.SemiBold
             )
 
             Spacer(modifier = Modifier.weight(1f))
 
-            // Control Actions Row
+            // Control Actions Row in White & Light Blue styling
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -226,55 +234,51 @@ fun CallScreen(
                 horizontalArrangement = Arrangement.SpaceEvenly,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                // Mute Mic
                 IconButton(
                     onClick = { isMuted = !isMuted },
                     modifier = Modifier
                         .size(56.dp)
                         .clip(CircleShape)
-                        .background(if (isMuted) Color.White else NavySurface)
+                        .background(if (isMuted) PrimaryBlue else LightBlueTint)
                         .testTag("call_mute_btn")
                 ) {
                     Icon(
                         imageVector = if (isMuted) Icons.Default.MicOff else Icons.Default.Mic,
                         contentDescription = "Mute",
-                        tint = if (isMuted) NavyDark else Color.White
+                        tint = if (isMuted) Color.White else PrimaryBlue
                     )
                 }
 
-                // Speakerphone
                 IconButton(
                     onClick = { isSpeakerOn = !isSpeakerOn },
                     modifier = Modifier
                         .size(56.dp)
                         .clip(CircleShape)
-                        .background(if (isSpeakerOn) PrimaryBlue else NavySurface)
+                        .background(if (isSpeakerOn) PrimaryBlue else LightBlueTint)
                         .testTag("call_speaker_btn")
                 ) {
                     Icon(
                         imageVector = Icons.Default.VolumeUp,
                         contentDescription = "Speaker",
-                        tint = Color.White
+                        tint = if (isSpeakerOn) Color.White else PrimaryBlue
                     )
                 }
 
-                // Video toggle
                 IconButton(
                     onClick = { isVideoEnabled = !isVideoEnabled },
                     modifier = Modifier
                         .size(56.dp)
                         .clip(CircleShape)
-                        .background(if (isVideoEnabled) PrimaryBlue else NavySurface)
+                        .background(if (isVideoEnabled) PrimaryBlue else LightBlueTint)
                         .testTag("call_video_toggle_btn")
                 ) {
                     Icon(
                         imageVector = if (isVideoEnabled) Icons.Default.Videocam else Icons.Default.VideocamOff,
                         contentDescription = "Video",
-                        tint = Color.White
+                        tint = if (isVideoEnabled) Color.White else PrimaryBlue
                     )
                 }
 
-                // End Call Button
                 IconButton(
                     onClick = {
                         scope.launch {

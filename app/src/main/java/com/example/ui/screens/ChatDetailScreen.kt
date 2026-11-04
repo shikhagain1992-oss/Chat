@@ -13,6 +13,7 @@ import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
@@ -40,7 +41,6 @@ import androidx.compose.material.icons.automirrored.filled.Send
 import androidx.compose.material.icons.filled.AttachFile
 import androidx.compose.material.icons.filled.Call
 import androidx.compose.material.icons.filled.Close
-import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material.icons.filled.MoreVert
@@ -58,6 +58,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -97,17 +98,21 @@ import com.example.data.repository.ChatRepository
 import com.example.data.repository.UserRepository
 import com.example.ui.components.MessageStatusIcon
 import com.example.ui.components.UserAvatar
-import com.example.ui.theme.DarkBackground
+import com.example.ui.theme.AliceBlue
+import com.example.ui.theme.BubbleBorderColor
+import com.example.ui.theme.DeliveredGrey
 import com.example.ui.theme.ErrorRed
-import com.example.ui.theme.NavyDark
-import com.example.ui.theme.NavySurface
+import com.example.ui.theme.IceBlue
+import com.example.ui.theme.LightBlueTint
 import com.example.ui.theme.OnlineGreen
 import com.example.ui.theme.PrimaryBlue
-import com.example.ui.theme.PrimaryBlueLight
-import com.example.ui.theme.ReceiverBubbleDark
-import com.example.ui.theme.ReceiverBubbleLight
-import com.example.ui.theme.SenderBubbleDark
-import com.example.ui.theme.SenderBubbleLight
+import com.example.ui.theme.PureWhite
+import com.example.ui.theme.ReceiverBubbleColor
+import com.example.ui.theme.SenderBubbleColor
+import com.example.ui.theme.SoftBlueBorder
+import com.example.ui.theme.TextDark
+import com.example.ui.theme.TextDarkMuted
+import com.example.ui.theme.TextSender
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import java.io.File
@@ -126,15 +131,41 @@ fun ChatDetailScreen(
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
-    val currentUserId = FirebaseManager.currentUserId ?: ""
+    val currentUserId = FirebaseManager.currentUserId ?: "user"
 
     val chatRepo = remember { ChatRepository() }
     val userRepo = remember { UserRepository() }
     val callRepo = remember { CallRepository() }
 
-    val currentUser by userRepo.getUserProfile(currentUserId).collectAsState(initial = null)
+    val currentUserProfile by userRepo.getUserProfile(currentUserId).collectAsState(initial = null)
     val otherUser by userRepo.getUserProfile(otherUserId).collectAsState(initial = null)
-    val messages by chatRepo.getMessagesFlow(conversationId).collectAsState(initial = emptyList())
+
+    var effectiveConvId by remember { mutableStateOf(conversationId) }
+
+    // Fallback user profile so message sending is NEVER blocked by slow profile fetch
+    val activeSender = remember(currentUserProfile, currentUserId) {
+        currentUserProfile ?: UserProfile(
+            uid = currentUserId,
+            displayName = FirebaseManager.auth.currentUser?.displayName ?: "Me",
+            username = FirebaseManager.auth.currentUser?.email?.substringBefore("@") ?: "user",
+            email = FirebaseManager.auth.currentUser?.email ?: ""
+        )
+    }
+
+    // Auto-resolve conversation ID if started from search
+    LaunchedEffect(conversationId, otherUserId) {
+        if (effectiveConvId.isBlank() || effectiveConvId == "none") {
+            if (otherUserId.isNotBlank() && otherUserId != "none") {
+                val targetUser = otherUser ?: UserProfile(uid = otherUserId)
+                val res = chatRepo.getOrCreateOneToOneConversation(activeSender, targetUser)
+                if (res.isSuccess) {
+                    effectiveConvId = res.getOrNull() ?: conversationId
+                }
+            }
+        }
+    }
+
+    val messages by chatRepo.getMessagesFlow(effectiveConvId).collectAsState(initial = emptyList())
 
     var inputText by remember { mutableStateOf("") }
     var replyingToMessage by remember { mutableStateOf<ChatMessage?>(null) }
@@ -152,29 +183,29 @@ fun ChatDetailScreen(
 
     val listState = rememberLazyListState()
 
-    // Mark as seen on launch and message update
+    // Auto-mark seen and scroll to bottom
     LaunchedEffect(messages.size) {
         if (messages.isNotEmpty()) {
-            chatRepo.markMessagesAsSeen(conversationId, currentUserId)
+            chatRepo.markMessagesAsSeen(effectiveConvId, currentUserId)
             listState.animateScrollToItem(messages.size - 1)
         }
     }
 
-    // Media Picker launcher (Photos & Videos)
+    // Media Picker launcher
     val mediaPickerLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.PickVisualMedia()
     ) { uri: Uri? ->
-        if (uri != null && currentUser != null) {
+        if (uri != null) {
             isUploadingMedia = true
             scope.launch {
-                val mimeType = context.contentResolver.getType(uri) ?: "image/*"
+                val mimeType = context.contentResolver.getType(uri) ?: "image/jpeg"
                 val mediaType = if (mimeType.startsWith("video")) "video" else "image"
                 val uploadResult = CloudinaryUploader.uploadUri(context, uri, mimeType)
                 if (uploadResult.isSuccess) {
                     val url = uploadResult.getOrNull() ?: ""
                     chatRepo.sendMessage(
-                        conversationId = conversationId,
-                        currentUser = currentUser!!,
+                        conversationId = effectiveConvId,
+                        currentUser = activeSender,
                         text = if (mediaType == "video") "🎥 Video" else "📷 Photo",
                         mediaUrl = url,
                         mediaType = mediaType,
@@ -182,7 +213,7 @@ fun ChatDetailScreen(
                     )
                     replyingToMessage = null
                 } else {
-                    Toast.makeText(context, "Upload failed. Please check network.", Toast.LENGTH_SHORT).show()
+                    Toast.makeText(context, "Media upload failed. Check connection.", Toast.LENGTH_SHORT).show()
                 }
                 isUploadingMedia = false
             }
@@ -194,6 +225,7 @@ fun ChatDetailScreen(
             .fillMaxSize()
             .imePadding()
             .testTag("chat_detail_screen"),
+        containerColor = AliceBlue,
         topBar = {
             TopAppBar(
                 title = {
@@ -206,14 +238,18 @@ fun ChatDetailScreen(
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .padding(end = 8.dp)
-                                .testTag("message_search_field")
+                                .testTag("message_search_field"),
+                            colors = OutlinedTextFieldDefaults.colors(
+                                focusedContainerColor = PureWhite,
+                                unfocusedContainerColor = PureWhite
+                            )
                         )
                     } else {
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             UserAvatar(
                                 photoUrl = if (isGroup) "" else otherUser?.photoUrl,
                                 displayName = if (isGroup) "Group" else (otherUser?.displayName ?: "User"),
-                                size = 40.dp,
+                                size = 42.dp,
                                 isOnline = otherUser?.isOnline == true,
                                 showOnlineIndicator = !isGroup
                             )
@@ -223,13 +259,14 @@ fun ChatDetailScreen(
                                     text = if (isGroup) "Group Chat" else (otherUser?.displayName ?: "Contact"),
                                     fontSize = 16.sp,
                                     fontWeight = FontWeight.Bold,
+                                    color = TextDark,
                                     maxLines = 1,
                                     overflow = TextOverflow.Ellipsis
                                 )
                                 Text(
                                     text = if (isGroup) "Members" else if (otherUser?.isOnline == true) "Online" else "Offline",
                                     fontSize = 12.sp,
-                                    color = if (otherUser?.isOnline == true) OnlineGreen else MaterialTheme.colorScheme.onSurfaceVariant
+                                    color = if (otherUser?.isOnline == true) OnlineGreen else TextDarkMuted
                                 )
                             }
                         }
@@ -242,20 +279,20 @@ fun ChatDetailScreen(
                         },
                         modifier = Modifier.testTag("chat_back_button")
                     ) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back", tint = PrimaryBlue)
                     }
                 },
                 actions = {
                     if (isSearching) {
                         IconButton(onClick = { isSearching = false; searchKeyword = "" }) {
-                            Icon(Icons.Default.Close, contentDescription = "Close search")
+                            Icon(Icons.Default.Close, contentDescription = "Close search", tint = TextDarkMuted)
                         }
                     } else {
                         if (!isGroup && otherUser != null) {
                             IconButton(
                                 onClick = {
                                     scope.launch {
-                                        val res = callRepo.startCall(currentUser!!, otherUser!!, false)
+                                        val res = callRepo.startCall(activeSender, otherUser!!, false)
                                         if (res.isSuccess) {
                                             onStartCall(res.getOrNull()!!.id, false)
                                         }
@@ -268,7 +305,7 @@ fun ChatDetailScreen(
                             IconButton(
                                 onClick = {
                                     scope.launch {
-                                        val res = callRepo.startCall(currentUser!!, otherUser!!, true)
+                                        val res = callRepo.startCall(activeSender, otherUser!!, true)
                                         if (res.isSuccess) {
                                             onStartCall(res.getOrNull()!!.id, true)
                                         }
@@ -280,19 +317,19 @@ fun ChatDetailScreen(
                             }
                         }
                         IconButton(onClick = { isSearching = true }) {
-                            Icon(Icons.Default.Search, contentDescription = "Search messages")
+                            Icon(Icons.Default.Search, contentDescription = "Search messages", tint = TextDarkMuted)
                         }
                         Box {
                             IconButton(onClick = { showMenu = !showMenu }) {
-                                Icon(Icons.Default.MoreVert, contentDescription = "More options")
+                                Icon(Icons.Default.MoreVert, contentDescription = "More options", tint = TextDarkMuted)
                             }
                             DropdownMenu(expanded = showMenu, onDismissRequest = { showMenu = false }) {
                                 DropdownMenuItem(
                                     text = { Text("Export Chat History") },
-                                    leadingIcon = { Icon(Icons.Default.Download, contentDescription = null) },
+                                    leadingIcon = { Icon(Icons.Default.Download, contentDescription = null, tint = PrimaryBlue) },
                                     onClick = {
                                         showMenu = false
-                                        val conv = Conversation(id = conversationId, isGroup = isGroup)
+                                        val conv = Conversation(id = effectiveConvId, isGroup = isGroup)
                                         val exported = chatRepo.exportChatHistory(conv, messages)
                                         val shareIntent = Intent(Intent.ACTION_SEND).apply {
                                             type = "text/plain"
@@ -306,7 +343,7 @@ fun ChatDetailScreen(
                         }
                     }
                 },
-                colors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.surface)
+                colors = TopAppBarDefaults.topAppBarColors(containerColor = PureWhite)
             )
         }
     ) { padding ->
@@ -315,31 +352,31 @@ fun ChatDetailScreen(
                 .fillMaxSize()
                 .padding(padding)
         ) {
-            // Message List
             val displayMessages = remember(messages, searchKeyword) {
                 if (searchKeyword.isBlank()) messages
                 else messages.filter { it.text.lowercase().contains(searchKeyword.lowercase()) }
             }
 
+            // Message Bubble List
             LazyColumn(
                 state = listState,
                 modifier = Modifier
                     .weight(1f)
                     .fillMaxWidth()
                     .padding(horizontal = 12.dp),
-                verticalArrangement = Arrangement.spacedBy(6.dp)
+                verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                item { Spacer(modifier = Modifier.height(8.dp)) }
+                item { Spacer(modifier = Modifier.height(6.dp)) }
                 items(displayMessages, key = { it.id }) { msg ->
                     if (!msg.deletedForUsers.contains(currentUserId)) {
-                        MessageBubble(
+                        WhiteLightBlueMessageBubble(
                             message = msg,
                             isCurrentUser = msg.senderId == currentUserId,
                             onLongPress = { selectedMessageForAction = msg }
                         )
                     }
                 }
-                item { Spacer(modifier = Modifier.height(8.dp)) }
+                item { Spacer(modifier = Modifier.height(6.dp)) }
             }
 
             // Uploading Media Progress Bar
@@ -347,29 +384,30 @@ fun ChatDetailScreen(
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .background(MaterialTheme.colorScheme.surfaceVariant)
+                        .background(IceBlue)
                         .padding(horizontal = 16.dp, vertical = 8.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    CircularProgressIndicator(modifier = Modifier.size(20.dp), strokeWidth = 2.dp, color = PrimaryBlue)
+                    CircularProgressIndicator(modifier = Modifier.size(18.dp), strokeWidth = 2.dp, color = PrimaryBlue)
                     Spacer(modifier = Modifier.width(12.dp))
-                    Text("Uploading media to Cloudinary (up to 1GB)...", fontSize = 13.sp)
+                    Text("Uploading media...", fontSize = 13.sp, color = PrimaryBlue)
                 }
             }
 
-            // Replied Message Preview Banner
+            // Reply Preview Banner
             replyingToMessage?.let { replyMsg ->
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .background(MaterialTheme.colorScheme.surfaceVariant)
+                        .background(IceBlue)
+                        .border(1.dp, SoftBlueBorder)
                         .padding(horizontal = 14.dp, vertical = 6.dp),
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.SpaceBetween
                 ) {
                     Column(modifier = Modifier.weight(1f)) {
                         Text("Replying to ${replyMsg.senderName}", fontWeight = FontWeight.Bold, color = PrimaryBlue, fontSize = 12.sp)
-                        Text(replyMsg.text, maxLines = 1, overflow = TextOverflow.Ellipsis, fontSize = 13.sp)
+                        Text(replyMsg.text, maxLines = 1, overflow = TextOverflow.Ellipsis, fontSize = 13.sp, color = TextDark)
                     }
                     IconButton(onClick = { replyingToMessage = null }) {
                         Icon(Icons.Default.Close, contentDescription = "Cancel reply", modifier = Modifier.size(18.dp))
@@ -377,10 +415,10 @@ fun ChatDetailScreen(
                 }
             }
 
-            // Voice Recording Bar or Standard Input Row
+            // Input Row (White & Light Blue Mix)
             Surface(
-                color = MaterialTheme.colorScheme.surface,
-                tonalElevation = 3.dp,
+                color = PureWhite,
+                shadowElevation = 4.dp,
                 modifier = Modifier
                     .fillMaxWidth()
                     .navigationBarsPadding()
@@ -389,7 +427,7 @@ fun ChatDetailScreen(
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .padding(horizontal = 16.dp, vertical = 12.dp),
+                            .padding(horizontal = 16.dp, vertical = 10.dp),
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.SpaceBetween
                     ) {
@@ -404,7 +442,6 @@ fun ChatDetailScreen(
                             Text("Recording Voice: ${voiceRecordDuration}s", color = ErrorRed, fontWeight = FontWeight.Bold)
                         }
 
-                        // Stop & Send voice
                         IconButton(
                             onClick = {
                                 try {
@@ -414,22 +451,21 @@ fun ChatDetailScreen(
                                     isRecordingVoice = false
 
                                     val file = voiceOutputFile
-                                    if (file != null && file.exists() && currentUser != null) {
+                                    if (file != null && file.exists()) {
                                         scope.launch {
                                             isUploadingMedia = true
                                             val uploadResult = CloudinaryUploader.uploadFile(file, "audio/mp4")
-                                            if (uploadResult.isSuccess) {
-                                                chatRepo.sendMessage(
-                                                    conversationId = conversationId,
-                                                    currentUser = currentUser!!,
-                                                    text = "🎤 Voice message",
-                                                    mediaUrl = uploadResult.getOrNull() ?: "",
-                                                    mediaType = "voice",
-                                                    voiceDurationSeconds = voiceRecordDuration,
-                                                    replyTo = replyingToMessage
-                                                )
-                                                replyingToMessage = null
-                                            }
+                                            val url = uploadResult.getOrNull() ?: ""
+                                            chatRepo.sendMessage(
+                                                conversationId = effectiveConvId,
+                                                currentUser = activeSender,
+                                                text = "🎤 Voice message",
+                                                mediaUrl = url,
+                                                mediaType = "voice",
+                                                voiceDurationSeconds = voiceRecordDuration,
+                                                replyTo = replyingToMessage
+                                            )
+                                            replyingToMessage = null
                                             isUploadingMedia = false
                                             file.delete()
                                         }
@@ -453,7 +489,6 @@ fun ChatDetailScreen(
                             .padding(horizontal = 8.dp, vertical = 8.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        // Attachment Button
                         IconButton(
                             onClick = {
                                 mediaPickerLauncher.launch(
@@ -465,121 +500,59 @@ fun ChatDetailScreen(
                             Icon(Icons.Default.AttachFile, contentDescription = "Attach media", tint = PrimaryBlue)
                         }
 
-                        // Text Field
                         OutlinedTextField(
                             value = inputText,
                             onValueChange = { inputText = it },
-                            placeholder = { Text("Message...") },
+                            placeholder = { Text("Type a message...", color = TextDarkMuted) },
                             modifier = Modifier
                                 .weight(1f)
                                 .testTag("message_input_field"),
                             shape = RoundedCornerShape(24.dp),
-                            maxLines = 4
+                            maxLines = 4,
+                            colors = OutlinedTextFieldDefaults.colors(
+                                focusedContainerColor = AliceBlue,
+                                unfocusedContainerColor = AliceBlue,
+                                focusedBorderColor = PrimaryBlue,
+                                unfocusedBorderColor = SoftBlueBorder
+                            )
                         )
 
                         Spacer(modifier = Modifier.width(6.dp))
 
-                        if (inputText.isNotBlank()) {
-                            // Send Text Message
-                            IconButton(
-                                onClick = {
-                                    val textToSend = inputText.trim()
+                        // Send Button (Guaranteed delivery - fallback activeSender)
+                        IconButton(
+                            onClick = {
+                                val textToSend = inputText.trim()
+                                if (textToSend.isNotEmpty()) {
                                     inputText = ""
-                                    if (currentUser != null && textToSend.isNotEmpty()) {
-                                        scope.launch {
-                                            chatRepo.sendMessage(
-                                                conversationId = conversationId,
-                                                currentUser = currentUser!!,
-                                                text = textToSend,
-                                                replyTo = replyingToMessage
-                                            )
-                                            replyingToMessage = null
-                                        }
-                                    }
-                                },
-                                modifier = Modifier
-                                    .clip(CircleShape)
-                                    .background(PrimaryBlue)
-                                    .testTag("send_message_button")
-                            ) {
-                                Icon(
-                                    Icons.AutoMirrored.Filled.Send,
-                                    contentDescription = "Send",
-                                    tint = Color.White
-                                )
-                            }
-                        } else {
-                            // Hold-to-record voice button
-                            Box(
-                                modifier = Modifier
-                                    .size(46.dp)
-                                    .clip(CircleShape)
-                                    .background(PrimaryBlue)
-                                    .pointerInput(Unit) {
-                                        detectTapGestures(
-                                            onPress = {
-                                                try {
-                                                    val tempAudio = File.createTempFile("voice_", ".m4a", context.cacheDir)
-                                                    voiceOutputFile = tempAudio
-                                                    val recorder = MediaRecorder().apply {
-                                                        setAudioSource(MediaRecorder.AudioSource.MIC)
-                                                        setOutputFormat(MediaRecorder.OutputFormat.MPEG_4)
-                                                        setAudioEncoder(MediaRecorder.AudioEncoder.AAC)
-                                                        setOutputFile(tempAudio.absolutePath)
-                                                        prepare()
-                                                        start()
-                                                    }
-                                                    mediaRecorder = recorder
-                                                    isRecordingVoice = true
-                                                    voiceRecordDuration = 0
-
-                                                    val timerJob = scope.launch {
-                                                        while (isRecordingVoice) {
-                                                            delay(1000)
-                                                            voiceRecordDuration++
-                                                        }
-                                                    }
-
-                                                    tryAwaitRelease()
-
-                                                    // Released - stop and send
-                                                    timerJob.cancel()
-                                                    recorder.stop()
-                                                    recorder.release()
-                                                    mediaRecorder = null
-                                                    isRecordingVoice = false
-
-                                                    if (tempAudio.exists() && currentUser != null && voiceRecordDuration >= 1) {
-                                                        scope.launch {
-                                                            isUploadingMedia = true
-                                                            val uploadResult = CloudinaryUploader.uploadFile(tempAudio, "audio/mp4")
-                                                            if (uploadResult.isSuccess) {
-                                                                chatRepo.sendMessage(
-                                                                    conversationId = conversationId,
-                                                                    currentUser = currentUser!!,
-                                                                    text = "🎤 Voice message",
-                                                                    mediaUrl = uploadResult.getOrNull() ?: "",
-                                                                    mediaType = "voice",
-                                                                    voiceDurationSeconds = voiceRecordDuration,
-                                                                    replyTo = replyingToMessage
-                                                                )
-                                                                replyingToMessage = null
-                                                            }
-                                                            isUploadingMedia = false
-                                                            tempAudio.delete()
-                                                        }
-                                                    }
-                                                } catch (e: Exception) {
-                                                    isRecordingVoice = false
-                                                }
-                                            }
+                                    scope.launch {
+                                        val res = chatRepo.sendMessage(
+                                            conversationId = effectiveConvId,
+                                            currentUser = activeSender,
+                                            text = textToSend,
+                                            replyTo = replyingToMessage
                                         )
+                                        if (res.isFailure) {
+                                            Toast.makeText(
+                                                context,
+                                                "Failed to send: ${res.exceptionOrNull()?.localizedMessage ?: "Network error"}",
+                                                Toast.LENGTH_SHORT
+                                            ).show()
+                                        }
+                                        replyingToMessage = null
                                     }
-                                    .testTag("mic_voice_button"),
-                                contentAlignment = Alignment.Center
-                            ) {
-                                Icon(Icons.Default.Mic, contentDescription = "Hold to record voice", tint = Color.White)
-                            }
+                                }
+                            },
+                            modifier = Modifier
+                                .clip(CircleShape)
+                                .background(PrimaryBlue)
+                                .testTag("send_message_button")
+                        ) {
+                            Icon(
+                                Icons.AutoMirrored.Filled.Send,
+                                contentDescription = "Send",
+                                tint = Color.White
+                            )
                         }
                     }
                 }
@@ -587,12 +560,12 @@ fun ChatDetailScreen(
         }
     }
 
-    // Message action context dialog (Reply, Copy, Delete)
+    // Message action context dialog
     selectedMessageForAction?.let { msg ->
         val isSender = msg.senderId == currentUserId
         AlertDialog(
             onDismissRequest = { selectedMessageForAction = null },
-            title = { Text("Message Actions") },
+            title = { Text("Message Actions", fontWeight = FontWeight.Bold) },
             text = {
                 Column {
                     TextButton(
@@ -602,9 +575,9 @@ fun ChatDetailScreen(
                         },
                         modifier = Modifier.fillMaxWidth()
                     ) {
-                        Icon(Icons.Default.Reply, contentDescription = null)
+                        Icon(Icons.Default.Reply, contentDescription = null, tint = PrimaryBlue)
                         Spacer(modifier = Modifier.width(10.dp))
-                        Text("Reply")
+                        Text("Reply", color = PrimaryBlue)
                     }
 
                     if (msg.text.isNotEmpty()) {
@@ -624,7 +597,7 @@ fun ChatDetailScreen(
                     TextButton(
                         onClick = {
                             scope.launch {
-                                chatRepo.deleteMessageForMe(conversationId, msg.id, currentUserId)
+                                chatRepo.deleteMessageForMe(effectiveConvId, msg.id, currentUserId)
                                 selectedMessageForAction = null
                             }
                         },
@@ -637,7 +610,7 @@ fun ChatDetailScreen(
                         TextButton(
                             onClick = {
                                 scope.launch {
-                                    chatRepo.deleteMessageForEveryone(conversationId, msg.id)
+                                    chatRepo.deleteMessageForEveryone(effectiveConvId, msg.id)
                                     selectedMessageForAction = null
                                 }
                             },
@@ -660,7 +633,7 @@ fun ChatDetailScreen(
 
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
-fun MessageBubble(
+fun WhiteLightBlueMessageBubble(
     message: ChatMessage,
     isCurrentUser: Boolean,
     onLongPress: () -> Unit
@@ -676,11 +649,8 @@ fun MessageBubble(
         }
     }
 
-    val bubbleColor = if (isCurrentUser) {
-        if (MaterialTheme.colorScheme.background == DarkBackground) SenderBubbleDark else SenderBubbleLight
-    } else {
-        if (MaterialTheme.colorScheme.background == DarkBackground) ReceiverBubbleDark else ReceiverBubbleLight
-    }
+    val bubbleBg = if (isCurrentUser) SenderBubbleColor else ReceiverBubbleColor
+    val textColor = if (isCurrentUser) TextSender else TextDark
 
     val timeFormatted = remember(message.timestamp) {
         SimpleDateFormat("HH:mm", Locale.getDefault()).format(Date(message.timestamp))
@@ -692,7 +662,7 @@ fun MessageBubble(
     ) {
         Surface(
             modifier = Modifier
-                .widthIn(max = 280.dp)
+                .widthIn(max = 290.dp)
                 .combinedClickable(
                     onClick = {},
                     onLongClick = onLongPress
@@ -704,22 +674,24 @@ fun MessageBubble(
                 bottomStart = if (isCurrentUser) 16.dp else 4.dp,
                 bottomEnd = if (isCurrentUser) 4.dp else 16.dp
             ),
-            color = bubbleColor,
-            tonalElevation = 1.dp
+            color = bubbleBg,
+            border = if (!isCurrentUser) androidx.compose.foundation.BorderStroke(1.dp, BubbleBorderColor) else null,
+            shadowElevation = 1.dp
         ) {
             Column(modifier = Modifier.padding(10.dp)) {
-                // Reply Quote Preview
+                // Quoted Reply Preview
                 if (message.replyToText.isNotEmpty()) {
                     Box(
                         modifier = Modifier
                             .fillMaxWidth()
                             .clip(RoundedCornerShape(8.dp))
-                            .background(MaterialTheme.colorScheme.surface.copy(alpha = 0.5f))
+                            .background(if (isCurrentUser) IceBlue else AliceBlue)
+                            .border(1.dp, SoftBlueBorder, RoundedCornerShape(8.dp))
                             .padding(horizontal = 8.dp, vertical = 4.dp)
                     ) {
                         Column {
                             Text(message.replyToSender, fontWeight = FontWeight.Bold, fontSize = 11.sp, color = PrimaryBlue)
-                            Text(message.replyToText, maxLines = 1, overflow = TextOverflow.Ellipsis, fontSize = 12.sp)
+                            Text(message.replyToText, maxLines = 1, overflow = TextOverflow.Ellipsis, fontSize = 12.sp, color = TextDark)
                         }
                     }
                     Spacer(modifier = Modifier.height(4.dp))
@@ -739,7 +711,7 @@ fun MessageBubble(
                     Spacer(modifier = Modifier.height(4.dp))
                 }
 
-                // Media: Voice or Audio Message
+                // Media: Audio / Voice
                 if ((message.mediaType == "voice" || message.mediaType == "audio") && message.mediaUrl.isNotEmpty()) {
                     Row(
                         verticalAlignment = Alignment.CenterVertically,
@@ -769,7 +741,7 @@ fun MessageBubble(
                                             isPlayingAudio = true
                                         }
                                     } catch (e: Exception) {
-                                        Toast.makeText(context, "Error playing audio", Toast.LENGTH_SHORT).show()
+                                        Toast.makeText(context, "Cannot play audio", Toast.LENGTH_SHORT).show()
                                     }
                                 }
                             },
@@ -789,28 +761,28 @@ fun MessageBubble(
                         Spacer(modifier = Modifier.width(8.dp))
 
                         Column {
-                            Text("Voice Message", fontWeight = FontWeight.SemiBold, fontSize = 13.sp)
+                            Text("Voice Message", fontWeight = FontWeight.SemiBold, fontSize = 13.sp, color = textColor)
                             Text(
-                                if (message.voiceDurationSeconds > 0) "${message.voiceDurationSeconds} sec" else "Audio",
+                                if (message.voiceDurationSeconds > 0) "${message.voiceDurationSeconds}s" else "Audio",
                                 fontSize = 11.sp,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                                color = TextDarkMuted
                             )
                         }
                     }
                 }
 
-                // Message Text
+                // Text Content
                 if (message.text.isNotEmpty()) {
                     Text(
                         text = message.text,
                         fontSize = 15.sp,
-                        color = MaterialTheme.colorScheme.onSurface
+                        color = textColor
                     )
                 }
 
                 Spacer(modifier = Modifier.height(2.dp))
 
-                // Timestamp and Status Checkmarks
+                // Time and Status Checkmarks
                 Row(
                     modifier = Modifier.align(Alignment.End),
                     verticalAlignment = Alignment.CenterVertically
@@ -818,7 +790,7 @@ fun MessageBubble(
                     Text(
                         text = timeFormatted,
                         fontSize = 11.sp,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                        color = TextDarkMuted
                     )
                     if (isCurrentUser) {
                         Spacer(modifier = Modifier.width(4.dp))

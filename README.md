@@ -134,7 +134,9 @@ NexChat Pro includes a responsive Web Application in `/web/index.html` (with a r
 ### How to Download the Android APK from GitHub:
 1. Open your GitHub repository in your browser.
 2. Click the **Actions** tab.
-3. Click the latest workflow run named **"Build NexChat Pro Android APK & AAB"**.
-4. Scroll to the **Artifacts** section at the bottom of the summary page.
-5. Click **NexChat-Pro-Debug-APK** to download the ready-to-install `.apk` file!
+3. If the first run (`feat: initialize project structure and base theme`) shows red, click on it and click the **"Re-run all jobs"** button (top right), or push any new commit. The updated workflow now has JDK 21, automated keystores, and all compilation dependencies pre-configured.
+4. Once completed (green checkmark), click on **"Build NexChat Pro Android APK & AAB"**.
+5. Scroll down to the **Artifacts** section at the bottom of the summary page.
+6. Click **NexChat-Pro-Debug-APK** to download the ready-to-install `.apk` file!
+
 

@@ -6,7 +6,9 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -18,6 +20,8 @@ import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -25,9 +29,11 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.CameraAlt
+import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Link
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
@@ -56,12 +62,28 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import coil.compose.AsyncImage
 import com.example.data.remote.CloudinaryUploader
 import com.example.data.remote.FirebaseManager
 import com.example.data.repository.UserRepository
 import com.example.ui.components.UserAvatar
+import com.example.ui.theme.LightBlueTint
 import com.example.ui.theme.PrimaryBlue
+import com.example.ui.theme.PrimaryBlueDark
+import com.example.ui.theme.PureWhite
+import com.example.ui.theme.SoftBlueBorder
+import com.example.ui.theme.TextDark
 import kotlinx.coroutines.launch
+
+// Preset ready-to-use avatar CDN links
+private val PRESET_AVATARS = listOf(
+    "https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=200&auto=format&fit=crop&q=80",
+    "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=200&auto=format&fit=crop&q=80",
+    "https://images.unsplash.com/photo-1570295999919-56ceb5ecca61?w=200&auto=format&fit=crop&q=80",
+    "https://images.unsplash.com/photo-1580489944761-15a19d654956?w=200&auto=format&fit=crop&q=80",
+    "https://images.unsplash.com/photo-1628157582853-a796fa650a6a?w=200&auto=format&fit=crop&q=80",
+    "https://images.unsplash.com/photo-1633332755192-727a05c4013d?w=200&auto=format&fit=crop&q=80"
+)
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -87,29 +109,36 @@ fun ProfileEditScreen(
 
     LaunchedEffect(currentUser) {
         currentUser?.let {
-            displayName = it.displayName
-            username = it.username
-            about = it.about
-            phoneNumber = it.phoneNumber
-            photoUrl = it.photoUrl
+            if (displayName.isEmpty()) displayName = it.displayName
+            if (username.isEmpty()) username = it.username
+            if (about.isEmpty()) about = it.about
+            if (phoneNumber.isEmpty()) phoneNumber = it.phoneNumber
+            if (photoUrl.isEmpty()) photoUrl = it.photoUrl
         }
     }
 
     val photoPickerLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.PickVisualMedia()
     ) { uri: Uri? ->
-        if (uri != null) {
+        if (uri != null && currentUserId.isNotEmpty()) {
             isUploadingPhoto = true
             scope.launch {
-                val uploadRes = CloudinaryUploader.uploadUri(context, uri, "image/*")
+                // 1. Immediately create compressed data URI for instant local & remote availability
+                val immediateDataUrl = CloudinaryUploader.uriToCompressedDataUrl(context, uri)
+                if (!immediateDataUrl.isNullOrEmpty()) {
+                    photoUrl = immediateDataUrl
+                    userRepo.updatePhotoUrl(currentUserId, immediateDataUrl)
+                    Toast.makeText(context, "Profile photo updated!", Toast.LENGTH_SHORT).show()
+                }
+
+                // 2. Also upload to Cloudinary for CDN link
+                val uploadRes = CloudinaryUploader.uploadUri(context, uri, "image/jpeg")
                 if (uploadRes.isSuccess) {
-                    val newUrl = uploadRes.getOrNull() ?: photoUrl
-                    photoUrl = newUrl
-                    // Auto-save photo immediately into Firestore
-                    userRepo.updatePhotoUrl(currentUserId, newUrl)
-                    Toast.makeText(context, "Profile photo updated & saved!", Toast.LENGTH_SHORT).show()
-                } else {
-                    Toast.makeText(context, "Failed to upload photo to Cloudinary", Toast.LENGTH_SHORT).show()
+                    val cdnUrl = uploadRes.getOrNull()
+                    if (!cdnUrl.isNullOrEmpty()) {
+                        photoUrl = cdnUrl
+                        userRepo.updatePhotoUrl(currentUserId, cdnUrl)
+                    }
                 }
                 isUploadingPhoto = false
             }
@@ -123,15 +152,16 @@ fun ProfileEditScreen(
             .testTag("profile_edit_screen"),
         topBar = {
             TopAppBar(
-                title = { Text("Edit Profile", fontWeight = FontWeight.Bold) },
+                title = { Text("Edit Profile", fontWeight = FontWeight.Bold, color = TextDark) },
                 navigationIcon = {
                     IconButton(onClick = onNavigateBack) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back", tint = PrimaryBlue)
                     }
                 },
-                colors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.surface)
+                colors = TopAppBarDefaults.topAppBarColors(containerColor = PureWhite)
             )
-        }
+        },
+        containerColor = PureWhite
     ) { padding ->
         Column(
             modifier = Modifier
@@ -141,11 +171,12 @@ fun ProfileEditScreen(
                 .padding(24.dp),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
-            // Avatar with change photo overlay
+            // Main Avatar with border
             Box(
                 modifier = Modifier
-                    .size(110.dp)
+                    .size(116.dp)
                     .clip(CircleShape)
+                    .border(3.dp, SoftBlueBorder, CircleShape)
                     .clickable {
                         photoPickerLauncher.launch(
                             PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)
@@ -157,7 +188,7 @@ fun ProfileEditScreen(
                 UserAvatar(
                     photoUrl = photoUrl,
                     displayName = displayName.ifBlank { "User" },
-                    size = 110.dp
+                    size = 116.dp
                 )
 
                 if (isUploadingPhoto) {
@@ -165,7 +196,7 @@ fun ProfileEditScreen(
                         modifier = Modifier
                             .fillMaxSize()
                             .clip(CircleShape)
-                            .background(Color.Black.copy(alpha = 0.5f)),
+                            .background(Color.Black.copy(alpha = 0.45f)),
                         contentAlignment = Alignment.Center
                     ) {
                         CircularProgressIndicator(color = Color.White, modifier = Modifier.size(32.dp))
@@ -180,9 +211,9 @@ fun ProfileEditScreen(
                         Box(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .height(34.dp)
-                                .clip(RoundedCornerShape(bottomStart = 55.dp, bottomEnd = 55.dp))
-                                .background(Color.Black.copy(alpha = 0.5f)),
+                                .height(36.dp)
+                                .clip(RoundedCornerShape(bottomStart = 58.dp, bottomEnd = 58.dp))
+                                .background(PrimaryBlue.copy(alpha = 0.85f)),
                             contentAlignment = Alignment.Center
                         ) {
                             Icon(
@@ -198,6 +229,7 @@ fun ProfileEditScreen(
 
             Spacer(modifier = Modifier.height(10.dp))
 
+            // Action Buttons for Photo
             Row(verticalAlignment = Alignment.CenterVertically) {
                 TextButton(
                     onClick = {
@@ -206,17 +238,63 @@ fun ProfileEditScreen(
                         )
                     }
                 ) {
-                    Icon(Icons.Default.CameraAlt, contentDescription = null, modifier = Modifier.size(16.dp))
+                    Icon(Icons.Default.CameraAlt, contentDescription = null, modifier = Modifier.size(16.dp), tint = PrimaryBlue)
                     Spacer(modifier = Modifier.width(6.dp))
-                    Text("Choose Photo")
+                    Text("Gallery / Camera", color = PrimaryBlue, fontWeight = FontWeight.SemiBold)
                 }
 
-                Text("•", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text("•", color = SoftBlueBorder, modifier = Modifier.padding(horizontal = 4.dp))
 
                 TextButton(onClick = { showUrlDialog = true }) {
-                    Icon(Icons.Default.Link, contentDescription = null, modifier = Modifier.size(16.dp))
+                    Icon(Icons.Default.Link, contentDescription = null, modifier = Modifier.size(16.dp), tint = PrimaryBlue)
                     Spacer(modifier = Modifier.width(6.dp))
-                    Text("Paste URL")
+                    Text("Paste URL", color = PrimaryBlue, fontWeight = FontWeight.SemiBold)
+                }
+            }
+
+            Spacer(modifier = Modifier.height(14.dp))
+
+            // Preset Avatars Row (Instant 1-tap select)
+            Text(
+                text = "Or choose a preset avatar:",
+                fontSize = 12.sp,
+                fontWeight = FontWeight.SemiBold,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.align(Alignment.Start)
+            )
+
+            Spacer(modifier = Modifier.height(8.dp))
+
+            LazyRow(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                items(PRESET_AVATARS) { presetUrl ->
+                    val isSelected = photoUrl == presetUrl
+                    Box(
+                        modifier = Modifier
+                            .size(50.dp)
+                            .clip(CircleShape)
+                            .border(
+                                width = if (isSelected) 3.dp else 1.5.dp,
+                                color = if (isSelected) PrimaryBlue else SoftBlueBorder,
+                                shape = CircleShape
+                            )
+                            .clickable {
+                                photoUrl = presetUrl
+                                scope.launch {
+                                    userRepo.updatePhotoUrl(currentUserId, presetUrl)
+                                    Toast.makeText(context, "Avatar selected & saved!", Toast.LENGTH_SHORT).show()
+                                }
+                            },
+                        contentAlignment = Alignment.Center
+                    ) {
+                        AsyncImage(
+                            model = presetUrl,
+                            contentDescription = "Preset avatar",
+                            modifier = Modifier.fillMaxSize().clip(CircleShape)
+                        )
+                    }
                 }
             }
 
@@ -238,7 +316,7 @@ fun ProfileEditScreen(
             OutlinedTextField(
                 value = username,
                 onValueChange = { username = it.filter { c -> c.isLetterOrDigit() || c == '_' } },
-                label = { Text("Username") },
+                label = { Text("Username (@handle)") },
                 singleLine = true,
                 modifier = Modifier
                     .fillMaxWidth()
@@ -272,14 +350,15 @@ fun ProfileEditScreen(
                 maxLines = 3
             )
 
-            Spacer(modifier = Modifier.height(28.dp))
+            Spacer(modifier = Modifier.height(26.dp))
 
             Button(
                 onClick = {
-                    if (currentUser == null) return@Button
+                    if (currentUserId.isEmpty()) return@Button
                     isSaving = true
                     scope.launch {
-                        val updated = currentUser!!.copy(
+                        val baseProfile = currentUser ?: com.example.data.model.UserProfile(uid = currentUserId)
+                        val updated = baseProfile.copy(
                             displayName = displayName.trim(),
                             username = username.trim().lowercase(),
                             about = about.trim(),
@@ -301,6 +380,7 @@ fun ProfileEditScreen(
                     .height(52.dp)
                     .testTag("save_profile_btn"),
                 shape = RoundedCornerShape(12.dp),
+                colors = ButtonDefaults.buttonColors(containerColor = PrimaryBlue),
                 enabled = !isSaving
             ) {
                 if (isSaving) {
@@ -315,10 +395,10 @@ fun ProfileEditScreen(
     if (showUrlDialog) {
         AlertDialog(
             onDismissRequest = { showUrlDialog = false },
-            title = { Text("Set Profile Picture URL") },
+            title = { Text("Set Profile Picture URL", fontWeight = FontWeight.Bold) },
             text = {
                 Column {
-                    Text("Paste an image URL from Cloudinary or anywhere on the web:")
+                    Text("Paste an image URL directly:")
                     Spacer(modifier = Modifier.height(8.dp))
                     OutlinedTextField(
                         value = inputUrl,
@@ -337,11 +417,12 @@ fun ProfileEditScreen(
                             photoUrl = url
                             scope.launch {
                                 userRepo.updatePhotoUrl(currentUserId, url)
-                                Toast.makeText(context, "Profile picture updated!", Toast.LENGTH_SHORT).show()
+                                Toast.makeText(context, "Profile picture set and saved!", Toast.LENGTH_SHORT).show()
                             }
                         }
                         showUrlDialog = false
-                    }
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = PrimaryBlue)
                 ) {
                     Text("Set Picture")
                 }

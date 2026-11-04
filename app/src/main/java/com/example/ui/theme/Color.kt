@@ -2,41 +2,36 @@ package com.example.ui.theme
 
 import androidx.compose.ui.graphics.Color
 
-// NexChat Pro Modern Navy & Electric Blue Palette
-val NavyDark = Color(0xFF0A192F)
-val NavySurface = Color(0xFF112240)
-val NavySurfaceLight = Color(0xFF1B2E4B)
-val NavySurfaceVariant = Color(0xFF233554)
+// NexChat Pro — Clean White & Light Blue Mix Palette
+val PureWhite = Color(0xFFFFFFFF)
+val AliceBlue = Color(0xFFF4F9FD)
+val IceBlue = Color(0xFFEBF5FF)
+val LightBlueTint = Color(0xFFE0F2FE)
+val SoftBlueBorder = Color(0xFFBAE6FD)
 
-val PrimaryBlue = Color(0xFF0284C7) // Electric Blue
-val PrimaryBlueLight = Color(0xFF38BDF8)
-val PrimaryBlueDark = Color(0xFF0369A1)
+val PrimaryBlue = Color(0xFF0284C7)      // Vibrant Sky Blue
+val PrimaryBlueLight = Color(0xFF38BDF8) // Bright Cyan Blue
+val PrimaryBlueDark = Color(0xFF0369A1)  // Deep Accent Blue
 
-val AccentCyan = Color(0xFF06B6D4)
-val AccentTeal = Color(0xFF14B8A6)
+val TextDark = Color(0xFF0F172A)         // Deep readable navy charcoal
+val TextDarkMuted = Color(0xFF475569)    // Slate muted text
+val TextSender = Color(0xFF0C4A6E)       // Deep navy text inside sender bubble
+
 val OnlineGreen = Color(0xFF10B981)
-val BusyOrange = Color(0xFFF59E0B)
 val ErrorRed = Color(0xFFEF4444)
-
-val SeenDoubleBlue = Color(0xFF38BDF8)
+val SeenDoubleBlue = Color(0xFF0284C7)
 val DeliveredGrey = Color(0xFF94A3B8)
 
-// Message Bubbles
-val SenderBubbleDark = Color(0xFF0F3963)
-val SenderBubbleLight = Color(0xFFE0F2FE)
-val ReceiverBubbleDark = Color(0xFF1E293B)
-val ReceiverBubbleLight = Color(0xFFF1F5F9)
+// Message Bubbles — White & Light Blue Mix
+val SenderBubbleColor = Color(0xFFE0F2FE)   // Light sky blue
+val ReceiverBubbleColor = Color(0xFFFFFFFF) // Pure crisp white
+val BubbleBorderColor = Color(0xFFE2E8F0)   // Subtle clean border
 
-// Light Palette
-val LightBackground = Color(0xFFF8FAFC)
-val LightSurface = Color(0xFFFFFFFF)
-val LightSurfaceVariant = Color(0xFFF1F5F9)
-val LightOnSurface = Color(0xFF0F172A)
-val LightOnSurfaceMuted = Color(0xFF64748B)
+// Backward-compatible aliases ensuring all screens compile with White & Light Blue theme
+val NavyDark = TextDark
+val NavySurface = PureWhite
+val DarkBackground = AliceBlue
+val NavyCard = PureWhite
+val TextPrimary = TextDark
+val TextSecondary = TextDarkMuted
 
-// Dark Palette
-val DarkBackground = Color(0xFF0A192F)
-val DarkSurface = Color(0xFF112240)
-val DarkSurfaceVariant = Color(0xFF1E293B)
-val DarkOnSurface = Color(0xFFF8FAFC)
-val DarkOnSurfaceMuted = Color(0xFF94A3B8)

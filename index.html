@@ -2,11 +2,1267 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <meta http-equiv="refresh" content="0; url=web/">
-  <script>window.location.href = "web/";</script>
-  <title>Redirecting to NexChat Pro Web...</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>NexChat Pro — Web</title>
+  <link rel="icon" type="image/png" href="https://res.cloudinary.com/emoxfdx6/image/upload/v1/nexchat_logo.png">
+  <!-- Google Fonts: Inter -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <!-- Lucide Icons -->
+  <script src="https://unpkg.com/lucide@latest"></script>
+  <!-- Firebase SDKs (v10 compat for universal browser compatibility) -->
+  <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-auth-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore-compat.js"></script>
+
+  <style>
+    :root {
+      --bg-dark: #F4F9FD;
+      --bg-surface: #FFFFFF;
+      --bg-surface-light: #EBF5FF;
+      --bg-card: #FFFFFF;
+      --primary: #0284C7;
+      --primary-light: #38BDF8;
+      --accent-cyan: #0EA5E9;
+      --online: #10B981;
+      --text-main: #0F172A;
+      --text-muted: #64748B;
+      --border: #BAE6FD;
+      --sender-bubble: #E0F2FE;
+      --sender-text: #0C4A6E;
+      --receiver-bubble: #FFFFFF;
+      --danger: #EF4444;
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+      font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+      -webkit-tap-highlight-color: transparent;
+    }
+
+    body {
+      background-color: var(--bg-dark);
+      color: var(--text-main);
+      height: 100vh;
+      overflow: hidden;
+      display: flex;
+    }
+
+    /* Auth Modal Screen */
+    #auth-screen {
+      position: fixed;
+      inset: 0;
+      background: radial-gradient(circle at center, #FFFFFF 0%, #EBF5FF 100%);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      z-index: 1000;
+      padding: 20px;
+    }
+
+    .auth-card {
+      background: var(--bg-surface);
+      border: 1px solid var(--border);
+      border-radius: 20px;
+      padding: 36px;
+      width: 100%;
+      max-width: 440px;
+      box-shadow: 0 20px 40px rgba(0,0,0,0.5);
+      text-align: center;
+    }
+
+    .brand-logo {
+      width: 64px;
+      height: 64px;
+      background: linear-gradient(135deg, var(--primary-light), var(--primary));
+      border-radius: 18px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      color: white;
+      margin-bottom: 16px;
+      box-shadow: 0 8px 24px rgba(2, 132, 199, 0.4);
+    }
+
+    .auth-card h2 {
+      font-size: 24px;
+      font-weight: 700;
+      margin-bottom: 6px;
+    }
+
+    .auth-card p {
+      color: var(--text-muted);
+      font-size: 14px;
+      margin-bottom: 24px;
+    }
+
+    .form-group {
+      margin-bottom: 14px;
+      text-align: left;
+    }
+
+    .form-group label {
+      display: block;
+      font-size: 13px;
+      font-weight: 500;
+      color: var(--text-muted);
+      margin-bottom: 6px;
+    }
+
+    .form-input {
+      width: 100%;
+      background: var(--bg-surface);
+      border: 1px solid var(--border);
+      color: var(--text-main);
+      padding: 12px 14px;
+      border-radius: 10px;
+      font-size: 14px;
+      outline: none;
+      transition: border-color 0.2s, box-shadow 0.2s;
+    }
+
+    .form-input::placeholder {
+      color: #94A3B8;
+    }
+
+    .form-input:focus {
+      border-color: var(--primary);
+      box-shadow: 0 0 0 3px rgba(2, 132, 199, 0.15);
+    }
+
+    .btn {
+      width: 100%;
+      padding: 13px;
+      border-radius: 10px;
+      border: none;
+      font-weight: 600;
+      font-size: 15px;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      transition: all 0.2s;
+    }
+
+    .btn-primary {
+      background: var(--primary);
+      color: white;
+      margin-top: 10px;
+    }
+
+    .btn-primary:hover {
+      background: #0369A1;
+    }
+
+    .toggle-auth {
+      margin-top: 18px;
+      font-size: 13px;
+      color: var(--text-muted);
+    }
+
+    .toggle-auth span {
+      color: var(--primary-light);
+      cursor: pointer;
+      font-weight: 600;
+    }
+
+    /* Main App Layout */
+    #app-container {
+      display: flex;
+      width: 100vw;
+      height: 100vh;
+      display: none;
+    }
+
+    /* Sidebar */
+    .sidebar {
+      width: 380px;
+      background: var(--bg-surface);
+      border-right: 1px solid var(--border);
+      display: flex;
+      flex-direction: column;
+      flex-shrink: 0;
+    }
+
+    .sidebar-header {
+      padding: 16px 20px;
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    .user-profile-badge {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      cursor: pointer;
+    }
+
+    .avatar {
+      width: 44px;
+      height: 44px;
+      border-radius: 50%;
+      object-fit: cover;
+      background: var(--primary);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: white;
+      font-weight: 700;
+      font-size: 18px;
+      flex-shrink: 0;
+      position: relative;
+    }
+
+    .online-dot {
+      position: absolute;
+      bottom: 0;
+      right: 0;
+      width: 12px;
+      height: 12px;
+      background: var(--online);
+      border: 2px solid var(--bg-surface);
+      border-radius: 50%;
+    }
+
+    .sidebar-actions {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .icon-btn {
+      background: transparent;
+      border: none;
+      color: var(--text-muted);
+      cursor: pointer;
+      padding: 8px;
+      border-radius: 8px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: background 0.2s, color 0.2s;
+    }
+
+    .icon-btn:hover {
+      background: var(--bg-surface-light);
+      color: var(--text-main);
+    }
+
+    /* Nav Tabs in Sidebar */
+    .nav-tabs {
+      display: flex;
+      border-bottom: 1px solid var(--border);
+      background: var(--bg-dark);
+    }
+
+    .nav-tab {
+      flex: 1;
+      padding: 12px;
+      text-align: center;
+      font-size: 13px;
+      font-weight: 600;
+      color: var(--text-muted);
+      cursor: pointer;
+      border-bottom: 2px solid transparent;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 6px;
+    }
+
+    .nav-tab.active {
+      color: var(--primary-light);
+      border-bottom-color: var(--primary-light);
+    }
+
+    .search-box {
+      padding: 12px 16px;
+      background: var(--bg-dark);
+    }
+
+    .search-input-wrap {
+      background: var(--bg-surface);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 8px 12px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .search-input-wrap input {
+      background: transparent;
+      border: none;
+      outline: none;
+      color: var(--text-main);
+      font-size: 14px;
+      width: 100%;
+    }
+
+    .search-input-wrap input::placeholder {
+      color: #94A3B8;
+    }
+
+    .list-container {
+      flex: 1;
+      overflow-y: auto;
+    }
+
+    .chat-item {
+      display: flex;
+      align-items: center;
+      padding: 14px 18px;
+      gap: 14px;
+      cursor: pointer;
+      border-bottom: 1px solid rgba(255,255,255,0.03);
+      transition: background 0.15s;
+    }
+
+    .chat-item:hover, .chat-item.active {
+      background: var(--bg-surface-light);
+    }
+
+    .chat-item-info {
+      flex: 1;
+      min-width: 0;
+    }
+
+    .chat-item-header {
+      display: flex;
+      justify-content: space-between;
+      margin-bottom: 4px;
+    }
+
+    .chat-item-name {
+      font-weight: 600;
+      font-size: 15px;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .chat-item-time {
+      font-size: 11px;
+      color: var(--text-muted);
+    }
+
+    .chat-item-msg {
+      font-size: 13px;
+      color: var(--text-muted);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    /* Main Chat Pane */
+    .chat-pane {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      background: var(--bg-dark);
+      position: relative;
+    }
+
+    .chat-pane-empty {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      color: var(--text-muted);
+      text-align: center;
+      padding: 20px;
+    }
+
+    .chat-header {
+      padding: 14px 24px;
+      background: var(--bg-surface);
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    .chat-messages {
+      flex: 1;
+      padding: 20px 24px;
+      overflow-y: auto;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+
+    .message-row {
+      display: flex;
+      width: 100%;
+    }
+
+    .message-row.sent {
+      justify-content: flex-end;
+    }
+
+    .message-bubble {
+      max-width: 65%;
+      padding: 10px 14px;
+      border-radius: 16px;
+      font-size: 14px;
+      line-height: 1.45;
+      position: relative;
+      word-wrap: break-word;
+    }
+
+    .message-row.sent .message-bubble {
+      background: var(--sender-bubble);
+      color: var(--sender-text);
+      border: 1px solid var(--border);
+      border-bottom-right-radius: 4px;
+      box-shadow: 0 1px 3px rgba(2, 132, 199, 0.08);
+    }
+
+    .message-row.received .message-bubble {
+      background: var(--receiver-bubble);
+      color: var(--text-main);
+      border: 1px solid #E2E8F0;
+      border-bottom-left-radius: 4px;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.04);
+    }
+
+    .message-media-img {
+      max-width: 100%;
+      border-radius: 10px;
+      margin-bottom: 6px;
+      display: block;
+      cursor: pointer;
+    }
+
+    .message-time {
+      font-size: 10px;
+      color: var(--text-muted);
+      display: flex;
+      align-items: center;
+      justify-content: flex-end;
+      gap: 4px;
+      margin-top: 4px;
+    }
+
+    .ticks-seen {
+      color: var(--primary);
+      font-weight: 700;
+    }
+
+    /* Input Bar */
+    .chat-input-bar {
+      padding: 12px 20px;
+      background: var(--bg-surface);
+      border-top: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .chat-input {
+      flex: 1;
+      background: var(--bg-dark);
+      border: 1px solid var(--border);
+      padding: 12px 16px;
+      border-radius: 24px;
+      color: var(--text-main);
+      font-size: 14px;
+      outline: none;
+      transition: border-color 0.2s, background 0.2s;
+    }
+
+    .chat-input:focus {
+      border-color: var(--primary);
+      background: #FFFFFF;
+    }
+
+    .chat-input::placeholder {
+      color: #94A3B8;
+    }
+
+    .btn-send {
+      width: 44px;
+      height: 44px;
+      border-radius: 50%;
+      background: var(--primary);
+      border: none;
+      color: white;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      flex-shrink: 0;
+    }
+
+    .btn-send:hover {
+      background: #0369A1;
+    }
+
+    /* Download Banner */
+    .apk-banner {
+      background: linear-gradient(90deg, #0369A1, #0284C7);
+      padding: 8px 16px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      font-size: 13px;
+      font-weight: 500;
+    }
+
+    .apk-banner a {
+      color: white;
+      text-decoration: underline;
+      font-weight: 700;
+    }
+
+    @media (max-width: 768px) {
+      .sidebar {
+        width: 100%;
+      }
+      .chat-pane {
+        display: none;
+      }
+      .chat-pane.mobile-active {
+        display: flex;
+        position: fixed;
+        inset: 0;
+        z-index: 50;
+      }
+    }
+  </style>
 </head>
-<body style="background:#0A192F;color:white;font-family:sans-serif;display:flex;align-items:center;justify-content:center;height:100vh;">
-  <p>Redirecting to <a href="web/" style="color:#38BDF8;">NexChat Pro Web App</a>...</p>
+<body>
+
+  <!-- Top APK Download Bar -->
+  <div style="position: fixed; top: 0; left: 0; right: 0; z-index: 999;" class="apk-banner">
+    <div>🚀 <strong>NexChat Pro:</strong> Android APK & Web sync live with Cloudinary & Firebase.</div>
+    <div><a href="https://github.com/shikhagain1992-oss/Nexchat_Pro/actions" target="_blank">📥 Download Android APK</a></div>
+  </div>
+
+  <div style="height: 38px;"></div>
+
+  <!-- Authentication Modal -->
+  <div id="auth-screen">
+    <div class="auth-card">
+      <div class="brand-logo">
+        <i data-lucide="message-square" style="width: 32px; height: 32px;"></i>
+      </div>
+      <h2>NexChat Pro</h2>
+      <p id="auth-subtitle">Sign in to sync your conversations and media</p>
+
+      <div id="auth-error" style="color: var(--danger); font-size: 13px; margin-bottom: 12px; display: none;"></div>
+
+      <div id="register-fields" style="display: none;">
+        <div class="form-group">
+          <label>Display Name</label>
+          <input type="text" id="reg-name" class="form-input" placeholder="e.g. Alex Rivera">
+        </div>
+        <div class="form-group">
+          <label>Username (@handle)</label>
+          <input type="text" id="reg-username" class="form-input" placeholder="e.g. alex_rivera">
+        </div>
+        <div class="form-group">
+          <label>Phone Number</label>
+          <input type="text" id="reg-phone" class="form-input" placeholder="e.g. +1234567890">
+        </div>
+      </div>
+
+      <div class="form-group">
+        <label>Email Address</label>
+        <input type="email" id="auth-email" class="form-input" placeholder="name@example.com">
+      </div>
+
+      <div class="form-group">
+        <label>Password</label>
+        <input type="password" id="auth-password" class="form-input" placeholder="••••••••">
+      </div>
+
+      <button id="auth-submit-btn" class="btn btn-primary" onclick="handleAuthSubmit()">
+        Sign In
+      </button>
+
+      <div class="toggle-auth">
+        <span id="auth-toggle-text" onclick="toggleAuthMode()">Don't have an account? Sign Up</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- Main Chat Application Container -->
+  <div id="app-container">
+    <!-- Sidebar -->
+    <div class="sidebar">
+      <div class="sidebar-header">
+        <div class="user-profile-badge" onclick="openProfileModal()">
+          <div class="avatar" id="current-user-avatar">
+            N
+            <div class="online-dot"></div>
+          </div>
+          <div>
+            <div id="current-user-name" style="font-weight: 700; font-size: 15px;">User</div>
+            <div id="current-user-handle" style="font-size: 12px; color: var(--primary-light);">@user</div>
+          </div>
+        </div>
+
+        <div class="sidebar-actions">
+          <button class="icon-btn" title="New Chat / Search" onclick="promptNewChat()">
+            <i data-lucide="message-square-plus" style="width: 20px; height: 20px;"></i>
+          </button>
+          <button class="icon-btn" title="Sign Out" onclick="handleSignOut()">
+            <i data-lucide="log-out" style="width: 20px; height: 20px;"></i>
+          </button>
+        </div>
+      </div>
+
+      <div class="nav-tabs">
+        <div class="nav-tab active" id="tab-chats" onclick="switchTab('chats')">
+          <i data-lucide="message-circle" style="width: 16px; height: 16px;"></i> Chats
+        </div>
+        <div class="nav-tab" id="tab-status" onclick="switchTab('status')">
+          <i data-lucide="circle-dashed" style="width: 16px; height: 16px;"></i> Status
+        </div>
+        <div class="nav-tab" id="tab-contacts" onclick="switchTab('contacts')">
+          <i data-lucide="users" style="width: 16px; height: 16px;"></i> Contacts
+        </div>
+      </div>
+
+      <div class="search-box">
+        <div class="search-input-wrap">
+          <i data-lucide="search" style="width: 16px; height: 16px; color: var(--text-muted);"></i>
+          <input type="text" id="sidebar-search" placeholder="Search chats or contacts..." oninput="handleSearch(this.value)">
+        </div>
+      </div>
+
+      <div class="list-container" id="sidebar-list">
+        <!-- Dynamically rendered chat/contact list items -->
+      </div>
+    </div>
+
+    <!-- Active Chat Pane -->
+    <div class="chat-pane" id="chat-pane">
+      <div class="chat-pane-empty" id="chat-empty">
+        <i data-lucide="message-square" style="width: 64px; height: 64px; margin-bottom: 16px; color: var(--primary-light);"></i>
+        <h3>NexChat Pro for Web</h3>
+        <p style="margin-top: 6px;">Select a contact or start a new conversation to begin chatting.</p>
+      </div>
+
+      <div id="chat-active" style="display: none; height: 100%; display: flex; flex-direction: column;">
+        <div class="chat-header">
+          <div style="display: flex; align-items: center; gap: 12px;">
+            <button class="icon-btn" id="mobile-back-btn" style="display: none;" onclick="closeMobileChat()">
+              <i data-lucide="arrow-left" style="width: 20px; height: 20px;"></i>
+            </button>
+            <div class="avatar" id="active-chat-avatar">C</div>
+            <div>
+              <div id="active-chat-title" style="font-weight: 700; font-size: 16px;">Contact</div>
+              <div id="active-chat-status" style="font-size: 12px; color: var(--online);">Online</div>
+            </div>
+          </div>
+          <div style="display: flex; gap: 8px;">
+            <button class="icon-btn" title="Voice Call" onclick="alert('Calling contact via NexChat Call Service...')">
+              <i data-lucide="phone" style="width: 20px; height: 20px;"></i>
+            </button>
+            <button class="icon-btn" title="Video Call" onclick="alert('Starting HD Video Call...')">
+              <i data-lucide="video" style="width: 20px; height: 20px;"></i>
+            </button>
+          </div>
+        </div>
+
+        <div class="chat-messages" id="chat-messages">
+          <!-- Live chat messages -->
+        </div>
+
+        <!-- Chat Input Bar -->
+        <div class="chat-input-bar">
+          <label class="icon-btn" title="Send Media (Cloudinary up to 1GB)" style="cursor: pointer;">
+            <i data-lucide="paperclip" style="width: 20px; height: 20px;"></i>
+            <input type="file" id="media-file-input" style="display: none;" onchange="handleFileUpload(event)">
+          </label>
+          <input type="text" id="chat-input" class="chat-input" placeholder="Type a message..." onkeydown="handleInputKeyDown(event)">
+          <button class="btn-send" onclick="sendTextMessage()">
+            <i data-lucide="send" style="width: 18px; height: 18px;"></i>
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Profile Edit Modal -->
+  <div id="profile-modal" style="position: fixed; inset: 0; background: rgba(15, 23, 42, 0.6); backdrop-filter: blur(4px); display: none; align-items: center; justify-content: center; z-index: 1000; padding: 20px;">
+    <div class="auth-card" style="text-align: left; max-width: 480px; max-height: 90vh; overflow-y: auto;">
+      <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 16px;">
+        <h3 style="font-size: 20px; font-weight: 700; color: var(--text-main);">Edit Profile</h3>
+        <button class="icon-btn" onclick="closeProfileModal()"><i data-lucide="x" style="width: 18px; height: 18px;"></i></button>
+      </div>
+
+      <!-- Live Photo Preview -->
+      <div style="display: flex; align-items: center; gap: 16px; margin-bottom: 20px; padding: 14px; background: var(--bg-surface-light); border-radius: 14px; border: 1px solid var(--border);">
+        <div id="modal-avatar-preview" class="avatar" style="width: 64px; height: 64px; font-size: 24px;">
+          N
+        </div>
+        <div>
+          <div style="font-size: 14px; font-weight: 600; color: var(--text-main);">Profile Picture</div>
+          <div style="font-size: 12px; color: var(--text-muted);">Syncs instantly across Android & Web</div>
+        </div>
+      </div>
+
+      <!-- Quick Preset Avatars -->
+      <div class="form-group">
+        <label>Choose a Preset Avatar (1-Tap Selection)</label>
+        <div style="display: flex; gap: 8px; overflow-x: auto; padding-bottom: 6px;">
+          <img src="https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150" onclick="selectPresetAvatar(this.src)" style="width: 44px; height: 44px; border-radius: 50%; object-fit: cover; cursor: pointer; border: 2px solid var(--border);" title="Avatar 1">
+          <img src="https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=150" onclick="selectPresetAvatar(this.src)" style="width: 44px; height: 44px; border-radius: 50%; object-fit: cover; cursor: pointer; border: 2px solid var(--border);" title="Avatar 2">
+          <img src="https://images.unsplash.com/photo-1570295999919-56ceb5ecca61?w=150" onclick="selectPresetAvatar(this.src)" style="width: 44px; height: 44px; border-radius: 50%; object-fit: cover; cursor: pointer; border: 2px solid var(--border);" title="Avatar 3">
+          <img src="https://images.unsplash.com/photo-1580489944761-15a19d654956?w=150" onclick="selectPresetAvatar(this.src)" style="width: 44px; height: 44px; border-radius: 50%; object-fit: cover; cursor: pointer; border: 2px solid var(--border);" title="Avatar 4">
+          <img src="https://images.unsplash.com/photo-1628157582853-a796fa650a6a?w=150" onclick="selectPresetAvatar(this.src)" style="width: 44px; height: 44px; border-radius: 50%; object-fit: cover; cursor: pointer; border: 2px solid var(--border);" title="Avatar 5">
+          <img src="https://images.unsplash.com/photo-1633332755192-727a05c4013d?w=150" onclick="selectPresetAvatar(this.src)" style="width: 44px; height: 44px; border-radius: 50%; object-fit: cover; cursor: pointer; border: 2px solid var(--border);" title="Avatar 6">
+        </div>
+      </div>
+
+      <div class="form-group">
+        <label>Upload From Device (Instant Preview & Cloudinary)</label>
+        <input type="file" id="modal-photo-file" accept="image/*" class="form-input" onchange="uploadProfilePhoto(event)">
+      </div>
+
+      <div class="form-group">
+        <label>Or Paste Image URL</label>
+        <input type="text" id="modal-photo-url" class="form-input" placeholder="https://res.cloudinary.com/..." oninput="updateAvatarPreview(this.value)">
+      </div>
+
+      <div class="form-group">
+        <label>Display Name</label>
+        <input type="text" id="modal-display-name" class="form-input">
+      </div>
+
+      <div class="form-group">
+        <label>About / Bio</label>
+        <input type="text" id="modal-about" class="form-input">
+      </div>
+
+      <div style="display: flex; gap: 10px; margin-top: 20px;">
+        <button class="btn btn-primary" onclick="saveProfileModal()" style="margin-top: 0;">Save Changes</button>
+        <button class="btn" style="background: #F1F5F9; color: var(--text-main); border: 1px solid var(--border); margin-top: 0;" onclick="closeProfileModal()">Cancel</button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // 1. Firebase Configuration from Master Credentials
+    const firebaseConfig = {
+      apiKey: "AIzaSyAb6XQuA5QqqoglYSvtQ-cjpOuuV3s_vwo",
+      authDomain: "nexchat-pro-8e480.firebaseapp.com",
+      databaseURL: "https://nexchat-pro-8e480-default-rtdb.firebaseio.com",
+      projectId: "nexchat-pro-8e480",
+      storageBucket: "nexchat-pro-8e480.firebasestorage.app",
+      messagingSenderId: "418090114272",
+      appId: "1:418090114272:web:1391225432d0f9eb44c485"
+    };
+
+    firebase.initializeApp(firebaseConfig);
+    const auth = firebase.auth();
+    const db = firebase.firestore();
+
+    const CLOUDINARY_CLOUD = "emoxfdx6";
+    const CLOUDINARY_PRESET = "ml_default";
+    const CLOUDINARY_UPLOAD_URL = `https://api.cloudinary.com/v1_1/${CLOUDINARY_CLOUD}/image/upload`;
+
+    let currentUser = null;
+    let currentUserProfile = null;
+    let activeConversationId = null;
+    let activeRecipient = null;
+    let isRegisterMode = false;
+    let currentTab = 'chats';
+    let conversationsList = [];
+    let contactsList = [];
+    let messageListenerUnsubscribe = null;
+
+    lucide.createIcons();
+
+    // 2. Auth State Listener
+    auth.onAuthStateChanged(async (user) => {
+      if (user) {
+        currentUser = user;
+        document.getElementById('auth-screen').style.display = 'none';
+        document.getElementById('app-container').style.display = 'flex';
+        await loadUserProfile(user.uid);
+        listenConversations();
+        loadContacts();
+      } else {
+        currentUser = null;
+        document.getElementById('auth-screen').style.display = 'flex';
+        document.getElementById('app-container').style.display = 'none';
+      }
+    });
+
+    async function loadUserProfile(uid) {
+      try {
+        const doc = await db.collection('users').doc(uid).get();
+        if (doc.exists) {
+          currentUserProfile = doc.data();
+          const photo = currentUserProfile.photoUrl || currentUserProfile.photo_url || currentUserProfile.profilePic || currentUserProfile.image || '';
+          const name = currentUserProfile.displayName || currentUserProfile.name || currentUserProfile.username || 'User';
+          document.getElementById('current-user-name').innerText = name;
+          document.getElementById('current-user-handle').innerText = `@${currentUserProfile.username || 'user'}`;
+          
+          const avatarEl = document.getElementById('current-user-avatar');
+          if (photo) {
+            avatarEl.innerHTML = `<img src="${photo}" style="width:100%;height:100%;border-radius:50%;object-fit:cover;"><div class="online-dot"></div>`;
+          } else {
+            avatarEl.innerHTML = `${name.charAt(0).toUpperCase()}<div class="online-dot"></div>`;
+          }
+        }
+      } catch (e) {
+        console.error("Error loading user profile:", e);
+      }
+    }
+
+    function toggleAuthMode() {
+      isRegisterMode = !isRegisterMode;
+      document.getElementById('register-fields').style.display = isRegisterMode ? 'block' : 'none';
+      document.getElementById('auth-subtitle').innerText = isRegisterMode ? 'Create a NexChat Pro account' : 'Sign in to sync your conversations and media';
+      document.getElementById('auth-submit-btn').innerText = isRegisterMode ? 'Sign Up' : 'Sign In';
+      document.getElementById('auth-toggle-text').innerText = isRegisterMode ? 'Already have an account? Sign In' : "Don't have an account? Sign Up";
+      document.getElementById('auth-error').style.display = 'none';
+    }
+
+    async function handleAuthSubmit() {
+      const email = document.getElementById('auth-email').value.trim();
+      const password = document.getElementById('auth-password').value;
+      const errorEl = document.getElementById('auth-error');
+
+      if (!email || !password) {
+        errorEl.innerText = "Please provide both email and password.";
+        errorEl.style.display = 'block';
+        return;
+      }
+
+      try {
+        if (isRegisterMode) {
+          const name = document.getElementById('reg-name').value.trim() || email.split('@')[0];
+          const username = document.getElementById('reg-username').value.trim().toLowerCase() || email.split('@')[0];
+          const phone = document.getElementById('reg-phone').value.trim();
+
+          const cred = await auth.createUserWithEmailAndPassword(email, password);
+          const uid = cred.user.uid;
+          await db.collection('users').doc(uid).set({
+            uid: uid,
+            displayName: name,
+            display_name: name,
+            username: username,
+            phoneNumber: phone,
+            email: email,
+            photoUrl: "",
+            photo_url: "",
+            about: "Hey there! I am using NexChat Pro.",
+            isOnline: true,
+            createdAt: Date.now(),
+            lastSeen: Date.now()
+          }, { merge: true });
+        } else {
+          await auth.signInWithEmailAndPassword(email, password);
+        }
+      } catch (err) {
+        errorEl.innerText = err.message;
+        errorEl.style.display = 'block';
+      }
+    }
+
+    async function handleSignOut() {
+      if (confirm("Are you sure you want to log out of NexChat Pro?")) {
+        await auth.signOut();
+      }
+    }
+
+    // 3. Conversation Listeners (Supports both 'conversations' and 'chats')
+    function listenConversations() {
+      const uid = currentUser.uid;
+      const sidebarList = document.getElementById('sidebar-list');
+
+      db.collection('conversations').onSnapshot(snap => {
+        conversationsList = [];
+        snap.forEach(doc => {
+          const data = doc.data();
+          const participants = data.participants || data.users || data.members || [];
+          if (participants.includes(uid) || participants.length === 0) {
+            conversationsList.push({ id: doc.id, ...data });
+          }
+        });
+
+        // Also query 'chats' collection for existing chats
+        db.collection('chats').get().then(chatsSnap => {
+          chatsSnap.forEach(doc => {
+            const data = doc.data();
+            const participants = data.participants || data.users || data.members || [];
+            if ((participants.includes(uid) || participants.length === 0) && !conversationsList.some(c => c.id === doc.id)) {
+              conversationsList.push({ id: doc.id, ...data });
+            }
+          });
+          renderSidebarList();
+        });
+      });
+    }
+
+    function renderSidebarList() {
+      const listEl = document.getElementById('sidebar-list');
+      listEl.innerHTML = '';
+
+      if (conversationsList.length === 0) {
+        listEl.innerHTML = `<div style="padding: 30px; text-align: center; color: var(--text-muted); font-size: 14px;">No chats yet. Tap + to discover contacts!</div>`;
+        return;
+      }
+
+      conversationsList.sort((a,b) => (b.timestamp || b.lastMessageTimestamp || 0) - (a.timestamp || a.lastMessageTimestamp || 0));
+
+      conversationsList.forEach(conv => {
+        const otherId = (conv.participants || []).find(p => p !== currentUser.uid) || 'Contact';
+        const title = conv.groupName || (conv.participantNames && conv.participantNames[otherId]) || 'Chat';
+        const lastMsg = conv.lastMessageText || conv.lastMessage || conv.message || 'No messages yet';
+        const photo = conv.groupPhotoUrl || (conv.participantPhotos && conv.participantPhotos[otherId]) || '';
+
+        const item = document.createElement('div');
+        item.className = `chat-item ${activeConversationId === conv.id ? 'active' : ''}`;
+        item.onclick = () => openConversation(conv.id, title, photo, otherId);
+
+        item.innerHTML = `
+          <div class="avatar">
+            ${photo ? `<img src="${photo}" style="width:100%;height:100%;border-radius:50%;object-fit:cover;">` : title.charAt(0).toUpperCase()}
+          </div>
+          <div class="chat-item-info">
+            <div class="chat-item-header">
+              <span class="chat-item-name">${title}</span>
+              <span class="chat-item-time">${formatTime(conv.timestamp || conv.lastMessageTimestamp)}</span>
+            </div>
+            <div class="chat-item-msg">${lastMsg}</div>
+          </div>
+        `;
+        listEl.appendChild(item);
+      });
+    }
+
+    function formatTime(ts) {
+      if (!ts) return '';
+      const d = new Date(ts);
+      return `${d.getHours().toString().padStart(2,'0')}:${d.getMinutes().toString().padStart(2,'0')}`;
+    }
+
+    // 4. Open Conversation and Live Message Stream
+    function openConversation(convId, title, photo, otherId) {
+      activeConversationId = convId;
+      activeRecipient = { id: otherId, name: title };
+
+      document.getElementById('chat-empty').style.display = 'none';
+      const activeEl = document.getElementById('chat-active');
+      activeEl.style.display = 'flex';
+
+      document.getElementById('active-chat-title').innerText = title;
+      const avatarEl = document.getElementById('active-chat-avatar');
+      if (photo) {
+        avatarEl.innerHTML = `<img src="${photo}" style="width:100%;height:100%;border-radius:50%;object-fit:cover;">`;
+      } else {
+        avatarEl.innerText = title.charAt(0).toUpperCase();
+      }
+
+      if (window.innerWidth <= 768) {
+        document.getElementById('chat-pane').classList.add('mobile-active');
+        document.getElementById('mobile-back-btn').style.display = 'flex';
+      }
+
+      // Live messages listener
+      if (messageListenerUnsubscribe) messageListenerUnsubscribe();
+
+      messageListenerUnsubscribe = db.collection('conversations').doc(convId).collection('messages')
+        .onSnapshot(snap => {
+          const msgs = [];
+          snap.forEach(doc => msgs.push({ id: doc.id, ...doc.data() }));
+
+          // Also check chats collection
+          db.collection('chats').doc(convId).collection('messages').get().then(cSnap => {
+            cSnap.forEach(doc => {
+              if (!msgs.some(m => m.id === doc.id)) msgs.push({ id: doc.id, ...doc.data() });
+            });
+            msgs.sort((a,b) => (a.timestamp || a.time || 0) - (b.timestamp || b.time || 0));
+            renderMessages(msgs);
+          });
+        });
+
+      renderSidebarList();
+    }
+
+    function renderMessages(messages) {
+      const container = document.getElementById('chat-messages');
+      container.innerHTML = '';
+
+      messages.forEach(msg => {
+        const isSent = (msg.senderId || msg.senderUid) === currentUser.uid;
+        const text = msg.text || msg.message || msg.content || '';
+        const mediaUrl = msg.mediaUrl || msg.imageUrl || msg.media_url || '';
+        const mediaType = msg.mediaType || msg.type || (mediaUrl ? 'image' : 'text');
+        const time = formatTime(msg.timestamp || msg.time);
+
+        const row = document.createElement('div');
+        row.className = `message-row ${isSent ? 'sent' : 'received'}`;
+
+        let mediaHtml = '';
+        if (mediaType === 'image' && mediaUrl) {
+          mediaHtml = `<img src="${mediaUrl}" class="message-media-img" onclick="window.open('${mediaUrl}', '_blank')">`;
+        } else if (mediaType === 'voice' || mediaType === 'audio') {
+          mediaHtml = `<audio controls src="${mediaUrl}" style="max-width: 220px; margin-bottom: 6px;"></audio>`;
+        }
+
+        row.innerHTML = `
+          <div class="message-bubble">
+            ${mediaHtml}
+            ${text ? `<div>${text}</div>` : ''}
+            <div class="message-time">
+              ${time}
+              ${isSent ? `<span class="ticks-seen">✓✓</span>` : ''}
+            </div>
+          </div>
+        `;
+        container.appendChild(row);
+      });
+
+      container.scrollTop = container.scrollHeight;
+    }
+
+    // 5. Send Message
+    async function sendTextMessage() {
+      const input = document.getElementById('chat-input');
+      const text = input.value.trim();
+      if (!text || !activeConversationId) return;
+
+      input.value = '';
+      const now = Date.now();
+      const msgData = {
+        conversationId: activeConversationId,
+        senderId: currentUser.uid,
+        senderName: currentUserProfile.displayName || 'User',
+        text: text,
+        message: text,
+        mediaUrl: '',
+        mediaType: 'text',
+        timestamp: now,
+        time: now,
+        status: 'sent'
+      };
+
+      await db.collection('conversations').doc(activeConversationId).collection('messages').add(msgData);
+      await db.collection('chats').doc(activeConversationId).collection('messages').add(msgData);
+
+      const updateData = {
+        lastMessageText: text,
+        lastMessage: text,
+        lastMessageTimestamp: now,
+        timestamp: now
+      };
+      await db.collection('conversations').doc(activeConversationId).set(updateData, { merge: true });
+      await db.collection('chats').doc(activeConversationId).set(updateData, { merge: true });
+    }
+
+    function handleInputKeyDown(e) {
+      if (e.key === 'Enter') sendTextMessage();
+    }
+
+    // 6. Media Upload to Cloudinary (up to 1GB)
+    async function handleFileUpload(e) {
+      const file = e.target.files[0];
+      if (!file || !activeConversationId) return;
+
+      const formData = new FormData();
+      formData.append('file', file);
+      formData.append('upload_preset', CLOUDINARY_PRESET);
+
+      try {
+        const res = await fetch(CLOUDINARY_UPLOAD_URL, { method: 'POST', body: formData });
+        const data = await res.json();
+        if (data.secure_url) {
+          const isImg = file.type.startsWith('image');
+          const isAud = file.type.startsWith('audio');
+          const type = isImg ? 'image' : isAud ? 'audio' : 'video';
+
+          const msgData = {
+            conversationId: activeConversationId,
+            senderId: currentUser.uid,
+            senderName: currentUserProfile.displayName || 'User',
+            text: isImg ? '📷 Photo' : '🎥 Media attachment',
+            mediaUrl: data.secure_url,
+            mediaType: type,
+            timestamp: Date.now(),
+            status: 'sent'
+          };
+          await db.collection('conversations').doc(activeConversationId).collection('messages').add(msgData);
+          await db.collection('chats').doc(activeConversationId).collection('messages').add(msgData);
+        }
+      } catch (err) {
+        alert("Upload to Cloudinary failed: " + err.message);
+      }
+    }
+
+    // 7. Profile Photo Upload & Save
+    function updateAvatarPreview(url) {
+      const prev = document.getElementById('modal-avatar-preview');
+      if (url) {
+        prev.innerHTML = `<img src="${url}" style="width:100%;height:100%;border-radius:50%;object-fit:cover;">`;
+      } else {
+        const name = (document.getElementById('modal-display-name').value || 'User').charAt(0).toUpperCase();
+        prev.innerText = name;
+      }
+    }
+
+    function selectPresetAvatar(url) {
+      document.getElementById('modal-photo-url').value = url;
+      updateAvatarPreview(url);
+    }
+
+    async function uploadProfilePhoto(e) {
+      const file = e.target.files[0];
+      if (!file) return;
+
+      // 1. Instant local preview and immediate Base64 conversion
+      const reader = new FileReader();
+      reader.onload = function(evt) {
+        const base64 = evt.target.result;
+        document.getElementById('modal-photo-url').value = base64;
+        updateAvatarPreview(base64);
+      };
+      reader.readAsDataURL(file);
+
+      // 2. Also upload to Cloudinary for CDN link
+      const formData = new FormData();
+      formData.append('file', file);
+      formData.append('upload_preset', CLOUDINARY_PRESET);
+
+      try {
+        const res = await fetch(CLOUDINARY_UPLOAD_URL, { method: 'POST', body: formData });
+        const data = await res.json();
+        if (data.secure_url) {
+          document.getElementById('modal-photo-url').value = data.secure_url;
+          updateAvatarPreview(data.secure_url);
+        }
+      } catch (err) {
+        console.warn("Cloudinary background upload warning:", err);
+      }
+    }
+
+    function openProfileModal() {
+      if (!currentUserProfile) return;
+      document.getElementById('modal-display-name').value = currentUserProfile.displayName || currentUserProfile.name || '';
+      document.getElementById('modal-about').value = currentUserProfile.about || currentUserProfile.bio || '';
+      const photo = currentUserProfile.photoUrl || currentUserProfile.photo_url || currentUserProfile.profilePic || currentUserProfile.image || '';
+      document.getElementById('modal-photo-url').value = photo;
+      updateAvatarPreview(photo);
+      document.getElementById('profile-modal').style.display = 'flex';
+      lucide.createIcons();
+    }
+
+    function closeProfileModal() {
+      document.getElementById('profile-modal').style.display = 'none';
+    }
+
+    async function saveProfileModal() {
+      const name = document.getElementById('modal-display-name').value.trim();
+      const aboutText = document.getElementById('modal-about').value.trim();
+      const photo = document.getElementById('modal-photo-url').value.trim();
+
+      const updateData = {
+        displayName: name,
+        display_name: name,
+        name: name,
+        about: aboutText,
+        bio: aboutText,
+        photoUrl: photo,
+        photo_url: photo,
+        profilePic: photo,
+        profile_picture: photo,
+        image: photo,
+        avatarUrl: photo,
+        updatedAt: Date.now()
+      };
+
+      await db.collection('users').doc(currentUser.uid).set(updateData, { merge: true });
+      await loadUserProfile(currentUser.uid);
+      closeProfileModal();
+      alert("Profile updated successfully across Android & Web!");
+    }
+
+    function closeMobileChat() {
+      document.getElementById('chat-pane').classList.remove('mobile-active');
+    }
+
+    function promptNewChat() {
+      const email = prompt("Enter email, username, or display name to chat with:");
+      if (!email) return;
+      db.collection('users').get().then(snap => {
+        let found = null;
+        snap.forEach(doc => {
+          const d = doc.data();
+          if (doc.id !== currentUser.uid && (
+            (d.email && d.email.toLowerCase().includes(email.toLowerCase())) ||
+            (d.username && d.username.toLowerCase().includes(email.toLowerCase())) ||
+            (d.displayName && d.displayName.toLowerCase().includes(email.toLowerCase()))
+          )) {
+            found = { id: doc.id, ...d };
+          }
+        });
+        if (found) {
+          const convId = [currentUser.uid, found.id].sort().join('_');
+          openConversation(convId, found.displayName || found.username, found.photoUrl || found.photo_url || '', found.id);
+        } else {
+          alert("No contact found matching '" + email + "'");
+        }
+      });
+    }
+
+    async function loadContacts() {
+      const snap = await db.collection('users').get();
+      contactsList = [];
+      snap.forEach(doc => {
+        if (doc.id !== currentUser.uid) {
+          contactsList.push({ id: doc.id, ...doc.data() });
+        }
+      });
+    }
+
+    function switchTab(tab) {
+      currentTab = tab;
+      document.querySelectorAll('.nav-tab').forEach(t => t.classList.remove('active'));
+      document.getElementById(`tab-${tab}`).classList.add('active');
+
+      const listEl = document.getElementById('sidebar-list');
+      if (tab === 'chats') {
+        renderSidebarList();
+      } else if (tab === 'contacts') {
+        listEl.innerHTML = '';
+        contactsList.forEach(c => {
+          const name = c.displayName || c.username || 'Contact';
+          const photo = c.photoUrl || c.photo_url || '';
+          const item = document.createElement('div');
+          item.className = 'chat-item';
+          item.onclick = () => {
+            const convId = [currentUser.uid, c.id].sort().join('_');
+            openConversation(convId, name, photo, c.id);
+          };
+          item.innerHTML = `
+            <div class="avatar">
+              ${photo ? `<img src="${photo}" style="width:100%;height:100%;border-radius:50%;object-fit:cover;">` : name.charAt(0).toUpperCase()}
+            </div>
+            <div class="chat-item-info">
+              <div class="chat-item-name">${name}</div>
+              <div class="chat-item-msg">${c.about || '@' + c.username}</div>
+            </div>
+          `;
+          listEl.appendChild(item);
+        });
+      } else if (tab === 'status') {
+        listEl.innerHTML = `<div style="padding: 24px; text-align: center; color: var(--text-muted); font-size: 14px;">24h Status updates are active on the mobile app. To view and post, use the NexChat Pro Android APK!</div>`;
+      }
+    }
+  </script>
 </body>
 </html>

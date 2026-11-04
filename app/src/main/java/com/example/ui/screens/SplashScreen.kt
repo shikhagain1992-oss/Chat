@@ -5,6 +5,7 @@ import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -14,7 +15,6 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -24,7 +24,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.Brush
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
@@ -32,11 +31,13 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.R
 import com.example.data.remote.FirebaseManager
-import com.example.ui.theme.DarkBackground
-import com.example.ui.theme.NavyDark
-import com.example.ui.theme.NavySurface
+import com.example.ui.theme.IceBlue
+import com.example.ui.theme.LightBlueTint
 import com.example.ui.theme.PrimaryBlue
-import com.example.ui.theme.PrimaryBlueLight
+import com.example.ui.theme.PrimaryBlueDark
+import com.example.ui.theme.PureWhite
+import com.example.ui.theme.SoftBlueBorder
+import com.example.ui.theme.TextDark
 import kotlinx.coroutines.delay
 
 @Composable
@@ -44,15 +45,14 @@ fun SplashScreen(
     onNavigateToDashboard: () -> Unit,
     onNavigateToLogin: () -> Unit
 ) {
-    val scale = remember { Animatable(0.7f) }
+    val scale = remember { Animatable(0.75f) }
 
     LaunchedEffect(Unit) {
         scale.animateTo(
             targetValue = 1f,
-            animationSpec = tween(durationMillis = 900, easing = FastOutSlowInEasing)
+            animationSpec = tween(durationMillis = 800, easing = FastOutSlowInEasing)
         )
-        // Ensure 2.5 - 3.0 seconds branded splash before transition
-        delay(2400)
+        delay(2200)
 
         val currentUser = FirebaseManager.currentUser
         if (currentUser != null && currentUser.uid.isNotEmpty()) {
@@ -67,7 +67,7 @@ fun SplashScreen(
             .fillMaxSize()
             .background(
                 Brush.verticalGradient(
-                    colors = listOf(NavyDark, NavySurface, DarkBackground)
+                    colors = listOf(PureWhite, IceBlue, LightBlueTint)
                 )
             )
             .testTag("splash_screen"),
@@ -79,14 +79,11 @@ fun SplashScreen(
         ) {
             Box(
                 modifier = Modifier
-                    .size(110.dp)
+                    .size(112.dp)
                     .scale(scale.value)
                     .clip(CircleShape)
-                    .background(
-                        Brush.radialGradient(
-                            colors = listOf(PrimaryBlueLight, PrimaryBlue, NavySurface)
-                        )
-                    ),
+                    .background(PureWhite)
+                    .border(3.dp, SoftBlueBorder, CircleShape),
                 contentAlignment = Alignment.Center
             ) {
                 Image(
@@ -96,30 +93,30 @@ fun SplashScreen(
                 )
             }
 
-            Spacer(modifier = Modifier.height(24.dp))
+            Spacer(modifier = Modifier.height(22.dp))
 
             Text(
                 text = "NexChat Pro",
-                color = Color.White,
+                color = TextDark,
                 fontSize = 28.sp,
                 fontWeight = FontWeight.ExtraBold,
-                letterSpacing = 1.sp
+                letterSpacing = 0.5.sp
             )
 
             Text(
-                text = "Fast • Secure • Connected",
-                color = PrimaryBlueLight,
+                text = "Fast • Secure • Real-time",
+                color = PrimaryBlue,
                 fontSize = 14.sp,
-                fontWeight = FontWeight.Medium
+                fontWeight = FontWeight.SemiBold
             )
 
             Spacer(modifier = Modifier.height(36.dp))
 
             CircularProgressIndicator(
                 modifier = Modifier
-                    .size(28.dp)
+                    .size(30.dp)
                     .testTag("splash_loading"),
-                color = PrimaryBlueLight,
+                color = PrimaryBlue,
                 strokeWidth = 3.dp
             )
         }

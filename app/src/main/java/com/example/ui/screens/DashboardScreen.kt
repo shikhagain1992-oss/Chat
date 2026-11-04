@@ -108,7 +108,10 @@ import com.example.ui.theme.NavySurface
 import com.example.ui.theme.OnlineGreen
 import com.example.ui.theme.PrimaryBlue
 import com.example.ui.theme.PrimaryBlueLight
+import com.example.ui.theme.PureWhite
 import com.example.ui.theme.SeenDoubleBlue
+import com.example.ui.theme.SoftBlueBorder
+import com.example.ui.theme.TextDark
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.launch
 import java.text.SimpleDateFormat
@@ -1021,9 +1024,10 @@ fun IncomingCallBanner(
             .fillMaxWidth()
             .statusBarsPadding()
             .padding(16.dp)
+            .border(1.5.dp, SoftBlueBorder, RoundedCornerShape(16.dp))
             .testTag("incoming_call_banner"),
         shape = RoundedCornerShape(16.dp),
-        colors = CardDefaults.cardColors(containerColor = NavyDark)
+        colors = CardDefaults.cardColors(containerColor = PureWhite)
     ) {
         Row(
             modifier = Modifier.padding(16.dp),
@@ -1032,8 +1036,8 @@ fun IncomingCallBanner(
             UserAvatar(photoUrl = call.callerPhotoUrl, displayName = call.callerName, size = 48.dp)
             Spacer(modifier = Modifier.width(12.dp))
             Column(modifier = Modifier.weight(1f)) {
-                Text("Incoming ${if (call.isVideo) "Video" else "Voice"} Call", color = PrimaryBlueLight, fontSize = 13.sp)
-                Text(call.callerName, color = Color.White, fontWeight = FontWeight.Bold, fontSize = 16.sp)
+                Text("Incoming ${if (call.isVideo) "Video" else "Voice"} Call", color = PrimaryBlue, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
+                Text(call.callerName, color = TextDark, fontWeight = FontWeight.Bold, fontSize = 16.sp)
             }
             IconButton(
                 onClick = onDecline,

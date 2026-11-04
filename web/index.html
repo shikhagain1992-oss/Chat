@@ -18,19 +18,20 @@
 
   <style>
     :root {
-      --bg-dark: #0A192F;
-      --bg-surface: #112240;
-      --bg-surface-light: #1B2E4B;
-      --bg-card: #1E293B;
+      --bg-dark: #F4F9FD;
+      --bg-surface: #FFFFFF;
+      --bg-surface-light: #EBF5FF;
+      --bg-card: #FFFFFF;
       --primary: #0284C7;
       --primary-light: #38BDF8;
-      --accent-cyan: #06B6D4;
+      --accent-cyan: #0EA5E9;
       --online: #10B981;
-      --text-main: #F8FAFC;
-      --text-muted: #94A3B8;
-      --border: #233554;
-      --sender-bubble: #0F3963;
-      --receiver-bubble: #1E293B;
+      --text-main: #0F172A;
+      --text-muted: #64748B;
+      --border: #BAE6FD;
+      --sender-bubble: #E0F2FE;
+      --sender-text: #0C4A6E;
+      --receiver-bubble: #FFFFFF;
       --danger: #EF4444;
     }
 
@@ -54,7 +55,7 @@
     #auth-screen {
       position: fixed;
       inset: 0;
-      background: radial-gradient(circle at center, #112240 0%, #0A192F 100%);
+      background: radial-gradient(circle at center, #FFFFFF 0%, #EBF5FF 100%);
       display: flex;
       align-items: center;
       justify-content: center;
@@ -113,18 +114,23 @@
 
     .form-input {
       width: 100%;
-      background: var(--bg-dark);
+      background: var(--bg-surface);
       border: 1px solid var(--border);
-      color: white;
+      color: var(--text-main);
       padding: 12px 14px;
       border-radius: 10px;
       font-size: 14px;
       outline: none;
-      transition: border-color 0.2s;
+      transition: border-color 0.2s, box-shadow 0.2s;
+    }
+
+    .form-input::placeholder {
+      color: #94A3B8;
     }
 
     .form-input:focus {
-      border-color: var(--primary-light);
+      border-color: var(--primary);
+      box-shadow: 0 0 0 3px rgba(2, 132, 199, 0.15);
     }
 
     .btn {
@@ -294,9 +300,13 @@
       background: transparent;
       border: none;
       outline: none;
-      color: white;
+      color: var(--text-main);
       font-size: 14px;
       width: 100%;
+    }
+
+    .search-input-wrap input::placeholder {
+      color: #94A3B8;
     }
 
     .list-container {
@@ -409,14 +419,18 @@
 
     .message-row.sent .message-bubble {
       background: var(--sender-bubble);
-      color: white;
+      color: var(--sender-text);
+      border: 1px solid var(--border);
       border-bottom-right-radius: 4px;
+      box-shadow: 0 1px 3px rgba(2, 132, 199, 0.08);
     }
 
     .message-row.received .message-bubble {
       background: var(--receiver-bubble);
       color: var(--text-main);
+      border: 1px solid #E2E8F0;
       border-bottom-left-radius: 4px;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.04);
     }
 
     .message-media-img {
@@ -438,7 +452,8 @@
     }
 
     .ticks-seen {
-      color: var(--primary-light);
+      color: var(--primary);
+      font-weight: 700;
     }
 
     /* Input Bar */
@@ -457,9 +472,19 @@
       border: 1px solid var(--border);
       padding: 12px 16px;
       border-radius: 24px;
-      color: white;
+      color: var(--text-main);
       font-size: 14px;
       outline: none;
+      transition: border-color 0.2s, background 0.2s;
+    }
+
+    .chat-input:focus {
+      border-color: var(--primary);
+      background: #FFFFFF;
+    }
+
+    .chat-input::placeholder {
+      color: #94A3B8;
     }
 
     .btn-send {
@@ -669,28 +694,60 @@
   </div>
 
   <!-- Profile Edit Modal -->
-  <div id="profile-modal" style="position: fixed; inset: 0; background: rgba(0,0,0,0.7); display: none; align-items: center; justify-content: center; z-index: 1000;">
-    <div class="auth-card" style="text-align: left;">
-      <h3 style="margin-bottom: 16px;">Edit Profile</h3>
+  <div id="profile-modal" style="position: fixed; inset: 0; background: rgba(15, 23, 42, 0.6); backdrop-filter: blur(4px); display: none; align-items: center; justify-content: center; z-index: 1000; padding: 20px;">
+    <div class="auth-card" style="text-align: left; max-width: 480px; max-height: 90vh; overflow-y: auto;">
+      <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 16px;">
+        <h3 style="font-size: 20px; font-weight: 700; color: var(--text-main);">Edit Profile</h3>
+        <button class="icon-btn" onclick="closeProfileModal()"><i data-lucide="x" style="width: 18px; height: 18px;"></i></button>
+      </div>
+
+      <!-- Live Photo Preview -->
+      <div style="display: flex; align-items: center; gap: 16px; margin-bottom: 20px; padding: 14px; background: var(--bg-surface-light); border-radius: 14px; border: 1px solid var(--border);">
+        <div id="modal-avatar-preview" class="avatar" style="width: 64px; height: 64px; font-size: 24px;">
+          N
+        </div>
+        <div>
+          <div style="font-size: 14px; font-weight: 600; color: var(--text-main);">Profile Picture</div>
+          <div style="font-size: 12px; color: var(--text-muted);">Syncs instantly across Android & Web</div>
+        </div>
+      </div>
+
+      <!-- Quick Preset Avatars -->
+      <div class="form-group">
+        <label>Choose a Preset Avatar (1-Tap Selection)</label>
+        <div style="display: flex; gap: 8px; overflow-x: auto; padding-bottom: 6px;">
+          <img src="https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150" onclick="selectPresetAvatar(this.src)" style="width: 44px; height: 44px; border-radius: 50%; object-fit: cover; cursor: pointer; border: 2px solid var(--border);" title="Avatar 1">
+          <img src="https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=150" onclick="selectPresetAvatar(this.src)" style="width: 44px; height: 44px; border-radius: 50%; object-fit: cover; cursor: pointer; border: 2px solid var(--border);" title="Avatar 2">
+          <img src="https://images.unsplash.com/photo-1570295999919-56ceb5ecca61?w=150" onclick="selectPresetAvatar(this.src)" style="width: 44px; height: 44px; border-radius: 50%; object-fit: cover; cursor: pointer; border: 2px solid var(--border);" title="Avatar 3">
+          <img src="https://images.unsplash.com/photo-1580489944761-15a19d654956?w=150" onclick="selectPresetAvatar(this.src)" style="width: 44px; height: 44px; border-radius: 50%; object-fit: cover; cursor: pointer; border: 2px solid var(--border);" title="Avatar 4">
+          <img src="https://images.unsplash.com/photo-1628157582853-a796fa650a6a?w=150" onclick="selectPresetAvatar(this.src)" style="width: 44px; height: 44px; border-radius: 50%; object-fit: cover; cursor: pointer; border: 2px solid var(--border);" title="Avatar 5">
+          <img src="https://images.unsplash.com/photo-1633332755192-727a05c4013d?w=150" onclick="selectPresetAvatar(this.src)" style="width: 44px; height: 44px; border-radius: 50%; object-fit: cover; cursor: pointer; border: 2px solid var(--border);" title="Avatar 6">
+        </div>
+      </div>
+
+      <div class="form-group">
+        <label>Upload From Device (Instant Preview & Cloudinary)</label>
+        <input type="file" id="modal-photo-file" accept="image/*" class="form-input" onchange="uploadProfilePhoto(event)">
+      </div>
+
+      <div class="form-group">
+        <label>Or Paste Image URL</label>
+        <input type="text" id="modal-photo-url" class="form-input" placeholder="https://res.cloudinary.com/..." oninput="updateAvatarPreview(this.value)">
+      </div>
+
       <div class="form-group">
         <label>Display Name</label>
         <input type="text" id="modal-display-name" class="form-input">
       </div>
+
       <div class="form-group">
         <label>About / Bio</label>
         <input type="text" id="modal-about" class="form-input">
       </div>
-      <div class="form-group">
-        <label>Profile Photo URL</label>
-        <input type="text" id="modal-photo-url" class="form-input" placeholder="https://res.cloudinary.com/...">
-      </div>
-      <div class="form-group">
-        <label>Upload New Photo via Cloudinary</label>
-        <input type="file" id="modal-photo-file" class="form-input" onchange="uploadProfilePhoto(event)">
-      </div>
-      <div style="display: flex; gap: 10px; margin-top: 18px;">
-        <button class="btn btn-primary" onclick="saveProfileModal()">Save Changes</button>
-        <button class="btn" style="background: var(--bg-card); color: white;" onclick="closeProfileModal()">Cancel</button>
+
+      <div style="display: flex; gap: 10px; margin-top: 20px;">
+        <button class="btn btn-primary" onclick="saveProfileModal()" style="margin-top: 0;">Save Changes</button>
+        <button class="btn" style="background: #F1F5F9; color: var(--text-main); border: 1px solid var(--border); margin-top: 0;" onclick="closeProfileModal()">Cancel</button>
       </div>
     </div>
   </div>
@@ -713,7 +770,7 @@
 
     const CLOUDINARY_CLOUD = "emoxfdx6";
     const CLOUDINARY_PRESET = "ml_default";
-    const CLOUDINARY_UPLOAD_URL = `https://api.cloudinary.com/v1_1/${CLOUDINARY_CLOUD}/auto/upload`;
+    const CLOUDINARY_UPLOAD_URL = `https://api.cloudinary.com/v1_1/${CLOUDINARY_CLOUD}/image/upload`;
 
     let currentUser = null;
     let currentUserProfile = null;
@@ -1048,10 +1105,35 @@
     }
 
     // 7. Profile Photo Upload & Save
+    function updateAvatarPreview(url) {
+      const prev = document.getElementById('modal-avatar-preview');
+      if (url) {
+        prev.innerHTML = `<img src="${url}" style="width:100%;height:100%;border-radius:50%;object-fit:cover;">`;
+      } else {
+        const name = (document.getElementById('modal-display-name').value || 'User').charAt(0).toUpperCase();
+        prev.innerText = name;
+      }
+    }
+
+    function selectPresetAvatar(url) {
+      document.getElementById('modal-photo-url').value = url;
+      updateAvatarPreview(url);
+    }
+
     async function uploadProfilePhoto(e) {
       const file = e.target.files[0];
       if (!file) return;
 
+      // 1. Instant local preview and immediate Base64 conversion
+      const reader = new FileReader();
+      reader.onload = function(evt) {
+        const base64 = evt.target.result;
+        document.getElementById('modal-photo-url').value = base64;
+        updateAvatarPreview(base64);
+      };
+      reader.readAsDataURL(file);
+
+      // 2. Also upload to Cloudinary for CDN link
       const formData = new FormData();
       formData.append('file', file);
       formData.append('upload_preset', CLOUDINARY_PRESET);
@@ -1061,19 +1143,22 @@
         const data = await res.json();
         if (data.secure_url) {
           document.getElementById('modal-photo-url').value = data.secure_url;
-          alert("Photo uploaded! Click 'Save Changes' to update profile.");
+          updateAvatarPreview(data.secure_url);
         }
       } catch (err) {
-        alert("Upload failed: " + err.message);
+        console.warn("Cloudinary background upload warning:", err);
       }
     }
 
     function openProfileModal() {
       if (!currentUserProfile) return;
-      document.getElementById('modal-display-name').value = currentUserProfile.displayName || '';
-      document.getElementById('modal-about').value = currentUserProfile.about || '';
-      document.getElementById('modal-photo-url').value = currentUserProfile.photoUrl || currentUserProfile.photo_url || '';
+      document.getElementById('modal-display-name').value = currentUserProfile.displayName || currentUserProfile.name || '';
+      document.getElementById('modal-about').value = currentUserProfile.about || currentUserProfile.bio || '';
+      const photo = currentUserProfile.photoUrl || currentUserProfile.photo_url || currentUserProfile.profilePic || currentUserProfile.image || '';
+      document.getElementById('modal-photo-url').value = photo;
+      updateAvatarPreview(photo);
       document.getElementById('profile-modal').style.display = 'flex';
+      lucide.createIcons();
     }
 
     function closeProfileModal() {
@@ -1095,7 +1180,9 @@
         photo_url: photo,
         profilePic: photo,
         profile_picture: photo,
-        image: photo
+        image: photo,
+        avatarUrl: photo,
+        updatedAt: Date.now()
       };
 
       await db.collection('users').doc(currentUser.uid).set(updateData, { merge: true });
