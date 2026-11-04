@@ -3,6 +3,7 @@ package com.example.data.remote
 import android.content.Context
 import android.net.Uri
 import android.util.Log
+import android.webkit.MimeTypeMap
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import okhttp3.MediaType.Companion.toMediaTypeOrNull
@@ -10,11 +11,9 @@ import okhttp3.MultipartBody
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.RequestBody.Companion.asRequestBody
-import okhttp3.RequestBody.Companion.toRequestBody
 import org.json.JSONObject
 import java.io.File
 import java.io.FileOutputStream
-import java.io.InputStream
 import java.util.concurrent.TimeUnit
 
 object CloudinaryUploader {
@@ -31,15 +30,29 @@ object CloudinaryUploader {
         .build()
 
     /**
-     * Uploads a file to Cloudinary using the unsigned preset.
-     * Supports images, videos, audio recordings, and documents up to 1 GB.
+     * Uploads a file to Cloudinary using unsigned preset 'ml_default'.
+     * Supports files up to 1 GB.
      */
     suspend fun uploadFile(
         file: File,
         mimeType: String = "auto"
     ): Result<String> = withContext(Dispatchers.IO) {
         try {
-            val mediaType = mimeType.toMediaTypeOrNull()
+            val resolvedMime = if (mimeType.isBlank() || mimeType == "auto") {
+                when (file.extension.lowercase()) {
+                    "jpg", "jpeg" -> "image/jpeg"
+                    "png" -> "image/png"
+                    "webp" -> "image/webp"
+                    "gif" -> "image/gif"
+                    "mp4" -> "video/mp4"
+                    "m4a", "aac", "mp3" -> "audio/mp4"
+                    else -> "application/octet-stream"
+                }
+            } else {
+                mimeType
+            }
+
+            val mediaType = resolvedMime.toMediaTypeOrNull()
             val requestFile = file.asRequestBody(mediaType)
 
             val requestBody = MultipartBody.Builder()
@@ -58,7 +71,7 @@ object CloudinaryUploader {
                 if (response.isSuccessful && body != null) {
                     val json = JSONObject(body)
                     val secureUrl = json.getString("secure_url")
-                    Log.d(TAG, "Uploaded successfully: $secureUrl")
+                    Log.d(TAG, "Uploaded to Cloudinary successfully: $secureUrl")
                     Result.success(secureUrl)
                 } else {
                     val err = "Upload failed code=${response.code} body=$body"
@@ -73,7 +86,7 @@ object CloudinaryUploader {
     }
 
     /**
-     * Uploads media from content URI (e.g. from photo picker).
+     * Uploads media from content URI with proper file extension preservation.
      */
     suspend fun uploadUri(
         context: Context,
@@ -81,13 +94,22 @@ object CloudinaryUploader {
         mimeType: String = "image/*"
     ): Result<String> = withContext(Dispatchers.IO) {
         try {
-            val tempFile = File.createTempFile("upload_", ".tmp", context.cacheDir)
-            context.contentResolver.openInputStream(uri)?.use { input ->
+            val contentResolver = context.contentResolver
+            val resolvedType = contentResolver.getType(uri) ?: mimeType
+            val extension = MimeTypeMap.getSingleton().getExtensionFromMimeType(resolvedType)
+                ?: if (resolvedType.startsWith("image")) "jpg"
+                   else if (resolvedType.startsWith("video")) "mp4"
+                   else if (resolvedType.startsWith("audio")) "m4a"
+                   else "bin"
+
+            val tempFile = File.createTempFile("upload_${System.currentTimeMillis()}_", ".$extension", context.cacheDir)
+            contentResolver.openInputStream(uri)?.use { input ->
                 FileOutputStream(tempFile).use { output ->
                     input.copyTo(output)
                 }
             }
-            val result = uploadFile(tempFile, mimeType)
+
+            val result = uploadFile(tempFile, resolvedType)
             tempFile.delete()
             result
         } catch (e: Exception) {

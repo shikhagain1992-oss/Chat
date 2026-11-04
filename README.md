@@ -115,9 +115,26 @@ gradle assembleDebug
 # app/build/outputs/apk/debug/app-debug.apk
 ```
 
-### GitHub Actions CI/CD:
-The automated workflow is located at `.github/workflows/android-apk.yml`. It:
-1. Triggers on push, pull request, or manual `workflow_dispatch`.
-2. Generates `app/google-services.json` automatically if not present.
-3. Builds the Debug APK and uploads the artifact as `NexChat-Pro-Debug-APK`.
-4. Builds release bundle (`.aab`) and signed release APK when signing secrets are available.
+## 🌐 Web Version & GitHub Pages Deployment
+
+NexChat Pro includes a responsive Web Application in `/web/index.html` (with a root entry at `/index.html`) that connects live to the same Firebase (`nexchat-pro-8e480`) and Cloudinary (`emoxfdx6`) backend.
+
+### How to Deploy from GitHub:
+1. In your GitHub repository, click **Settings** (top navigation bar).
+2. In the left sidebar, click **Pages**.
+3. Under **Build and deployment**:
+   - **Source**: Select **GitHub Actions**.
+4. The workflow at `.github/workflows/deploy-pages.yml` will automatically build and deploy the web version on every commit.
+5. Your live web app URL will be:
+   ```
+   https://<your-github-username>.github.io/<repository-name>/
+   ```
+   (e.g., `https://shikhagain1992-oss.github.io/Nexchat_Pro/`)
+
+### How to Download the Android APK from GitHub:
+1. Open your GitHub repository in your browser.
+2. Click the **Actions** tab.
+3. Click the latest workflow run named **"Build NexChat Pro Android APK & AAB"**.
+4. Scroll to the **Artifacts** section at the bottom of the summary page.
+5. Click **NexChat-Pro-Debug-APK** to download the ready-to-install `.apk` file!
+

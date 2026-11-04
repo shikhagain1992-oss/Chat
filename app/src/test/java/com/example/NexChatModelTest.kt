@@ -5,6 +5,8 @@ import com.example.data.model.ChatMessage
 import com.example.data.model.Conversation
 import com.example.data.model.StatusStory
 import com.example.data.model.UserProfile
+import com.example.data.repository.ChatRepository
+import com.example.data.repository.UserRepository
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertTrue
@@ -85,6 +87,33 @@ class NexChatModelTest {
         assertEquals("call_99", map["id"])
         assertEquals(true, map["isVideo"])
         assertEquals("ringing", map["status"])
+    }
+
+    @Test
+    fun testExtractPhotoUrlAliases() {
+        val mapWithPhotoUrl = mapOf("photoUrl" to "https://photo1.jpg")
+        assertEquals("https://photo1.jpg", UserRepository.extractPhotoUrl(mapWithPhotoUrl))
+
+        val mapWithSnakeCase = mapOf("photo_url" to "https://photo2.jpg")
+        assertEquals("https://photo2.jpg", UserRepository.extractPhotoUrl(mapWithSnakeCase))
+
+        val mapWithProfilePic = mapOf("profilePic" to "https://photo3.jpg")
+        assertEquals("https://photo3.jpg", UserRepository.extractPhotoUrl(mapWithProfilePic))
+
+        val mapWithImage = mapOf("image" to "https://photo4.jpg")
+        assertEquals("https://photo4.jpg", UserRepository.extractPhotoUrl(mapWithImage))
+    }
+
+    @Test
+    fun testExtractParticipantsAliases() {
+        val withParticipants = mapOf("participants" to listOf("u1", "u2"))
+        assertEquals(listOf("u1", "u2"), ChatRepository.extractParticipantsList(withParticipants))
+
+        val withUsers = mapOf("users" to listOf("u3", "u4"))
+        assertEquals(listOf("u3", "u4"), ChatRepository.extractParticipantsList(withUsers))
+
+        val withMembers = mapOf("members" to listOf("u5", "u6"))
+        assertEquals(listOf("u5", "u6"), ChatRepository.extractParticipantsList(withMembers))
     }
 
     @Test

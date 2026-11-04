@@ -5,6 +5,8 @@ import com.example.data.model.ChatMessage
 import com.example.data.model.Conversation
 import com.example.data.model.UserProfile
 import com.example.data.remote.FirebaseManager
+import com.example.data.repository.UserRepository.Companion.extractPhotoUrl
+import com.example.data.repository.UserRepository.Companion.parseTimestamp
 import com.google.firebase.firestore.FieldValue
 import com.google.firebase.firestore.Query
 import com.google.firebase.firestore.SetOptions
@@ -21,9 +23,10 @@ class ChatRepository {
 
     private val db = FirebaseManager.firestore
     private val conversationsRef = db.collection("conversations")
+    private val chatsRef = db.collection("chats")
 
     /**
-     * Finds existing 1-on-1 conversation or creates a new one
+     * Finds existing 1-on-1 conversation or creates a new one in both collections
      */
     suspend fun getOrCreateOneToOneConversation(
         currentUser: UserProfile,
@@ -32,39 +35,62 @@ class ChatRepository {
         val currentUid = currentUser.uid
         val otherUid = otherUser.uid
         return try {
-            val query = conversationsRef
-                .whereEqualTo("isGroup", false)
+            // 1. Check in 'conversations'
+            val convQuery = conversationsRef
                 .whereArrayContains("participants", currentUid)
                 .get()
                 .await()
 
-            for (doc in query.documents) {
-                val participants = doc.get("participants") as? List<*>
-                if (participants != null && participants.contains(otherUid)) {
+            for (doc in convQuery.documents) {
+                val participants = extractParticipantsList(doc.data ?: emptyMap())
+                if (participants.contains(otherUid) && !(doc.getBoolean("isGroup") ?: false)) {
                     return Result.success(doc.id)
                 }
             }
 
-            // Create new conversation
+            // 2. Check in 'chats'
+            val chatsQuery = chatsRef
+                .whereArrayContains("participants", currentUid)
+                .get()
+                .await()
+
+            for (doc in chatsQuery.documents) {
+                val participants = extractParticipantsList(doc.data ?: emptyMap())
+                if (participants.contains(otherUid) && !(doc.getBoolean("isGroup") ?: false)) {
+                    return Result.success(doc.id)
+                }
+            }
+
+            // 3. Create new conversation
             val convId = UUID.randomUUID().toString()
-            val newConv = Conversation(
-                id = convId,
-                isGroup = false,
-                participants = listOf(currentUid, otherUid),
-                participantNames = mapOf(
+            val now = System.currentTimeMillis()
+            val convMap = mapOf(
+                "id" to convId,
+                "isGroup" to false,
+                "participants" to listOf(currentUid, otherUid),
+                "users" to listOf(currentUid, otherUid),
+                "members" to listOf(currentUid, otherUid),
+                "participantNames" to mapOf(
                     currentUid to currentUser.displayName.ifBlank { currentUser.username },
                     otherUid to otherUser.displayName.ifBlank { otherUser.username }
                 ),
-                participantPhotos = mapOf(
+                "participantPhotos" to mapOf(
                     currentUid to currentUser.photoUrl,
                     otherUid to otherUser.photoUrl
                 ),
-                lastMessageText = "Started a conversation",
-                lastMessageTimestamp = System.currentTimeMillis(),
-                lastMessageSenderId = currentUid,
-                createdBy = currentUid
+                "lastMessageText" to "Started a conversation",
+                "lastMessage" to "Started a conversation",
+                "last_message" to "Started a conversation",
+                "lastMessageTimestamp" to now,
+                "timestamp" to now,
+                "lastMessageSenderId" to currentUid,
+                "createdBy" to currentUid,
+                "createdAt" to now
             )
-            conversationsRef.document(convId).set(newConv.toMap()).await()
+
+            conversationsRef.document(convId).set(convMap, SetOptions.merge()).await()
+            chatsRef.document(convId).set(convMap, SetOptions.merge()).await()
+
             Result.success(convId)
         } catch (e: Exception) {
             Log.e("ChatRepository", "Error getting/creating conversation: ${e.message}", e)
@@ -94,22 +120,31 @@ class ChatRepository {
                 participantPhotos[user.uid] = user.photoUrl
             }
 
-            val conversation = Conversation(
-                id = groupId,
-                isGroup = true,
-                participants = participants,
-                participantNames = participantNames,
-                participantPhotos = participantPhotos,
-                lastMessageText = "Group created",
-                lastMessageTimestamp = System.currentTimeMillis(),
-                lastMessageSenderId = currentUser.uid,
-                groupName = name,
-                groupPhotoUrl = photoUrl,
-                groupDescription = description,
-                createdBy = currentUser.uid
+            val now = System.currentTimeMillis()
+            val convMap = mapOf(
+                "id" to groupId,
+                "isGroup" to true,
+                "participants" to participants,
+                "users" to participants,
+                "members" to participants,
+                "participantNames" to participantNames,
+                "participantPhotos" to participantPhotos,
+                "lastMessageText" to "Group created",
+                "lastMessage" to "Group created",
+                "lastMessageTimestamp" to now,
+                "timestamp" to now,
+                "lastMessageSenderId" to currentUser.uid,
+                "groupName" to name,
+                "name" to name,
+                "groupPhotoUrl" to photoUrl,
+                "groupDescription" to description,
+                "createdBy" to currentUser.uid,
+                "createdAt" to now
             )
 
-            conversationsRef.document(groupId).set(conversation.toMap()).await()
+            conversationsRef.document(groupId).set(convMap, SetOptions.merge()).await()
+            chatsRef.document(groupId).set(convMap, SetOptions.merge()).await()
+
             Result.success(groupId)
         } catch (e: Exception) {
             Log.e("ChatRepository", "Error creating group: ${e.message}", e)
@@ -118,7 +153,7 @@ class ChatRepository {
     }
 
     /**
-     * Real-time stream of all user conversations
+     * Real-time stream of all user conversations merging 'conversations' and 'chats'
      */
     fun getConversationsFlow(currentUserId: String): Flow<List<Conversation>> = callbackFlow {
         if (currentUserId.isEmpty()) {
@@ -127,48 +162,51 @@ class ChatRepository {
             return@callbackFlow
         }
 
-        val listener = conversationsRef
-            .whereArrayContains("participants", currentUserId)
-            .addSnapshotListener { snapshot, error ->
-                if (error != null) {
-                    Log.w("ChatRepository", "Listen conversations failed: ${error.message}")
-                    return@addSnapshotListener
-                }
-                val list = mutableListOf<Conversation>()
-                snapshot?.documents?.forEach { doc ->
-                    val data = doc.data ?: return@forEach
-                    @Suppress("UNCHECKED_CAST")
-                    val participants = data["participants"] as? List<String> ?: emptyList()
-                    @Suppress("UNCHECKED_CAST")
-                    val participantNames = data["participantNames"] as? Map<String, String> ?: emptyMap()
-                    @Suppress("UNCHECKED_CAST")
-                    val participantPhotos = data["participantPhotos"] as? Map<String, String> ?: emptyMap()
-                    @Suppress("UNCHECKED_CAST")
-                    val unreadCounts = (data["unreadCounts"] as? Map<String, Number>)?.mapValues { it.value.toLong() } ?: emptyMap()
+        val convMap = mutableMapOf<String, Conversation>()
 
-                    list.add(
-                        Conversation(
-                            id = doc.id,
-                            isGroup = data["isGroup"] as? Boolean ?: false,
-                            participants = participants,
-                            participantNames = participantNames,
-                            participantPhotos = participantPhotos,
-                            lastMessageText = data["lastMessageText"] as? String ?: "",
-                            lastMessageTimestamp = (data["lastMessageTimestamp"] as? Number)?.toLong() ?: 0L,
-                            lastMessageSenderId = data["lastMessageSenderId"] as? String ?: "",
-                            unreadCounts = unreadCounts,
-                            groupName = data["groupName"] as? String ?: "",
-                            groupPhotoUrl = data["groupPhotoUrl"] as? String ?: "",
-                            groupDescription = data["groupDescription"] as? String ?: "",
-                            createdBy = data["createdBy"] as? String ?: ""
-                        )
-                    )
-                }
-                list.sortByDescending { it.lastMessageTimestamp }
-                trySend(list)
+        fun emitMerged() {
+            val sorted = convMap.values.toList().sortedByDescending { it.lastMessageTimestamp }
+            trySend(sorted)
+        }
+
+        // Listener 1: 'conversations'
+        val listenerConv = conversationsRef.addSnapshotListener { snapshot, error ->
+            if (error != null) {
+                Log.w("ChatRepository", "Listen conversations failed: ${error.message}")
+                return@addSnapshotListener
             }
+            snapshot?.documents?.forEach { doc ->
+                val data = doc.data ?: return@forEach
+                val participants = extractParticipantsList(data)
+                if (participants.contains(currentUserId) || participants.isEmpty()) {
+                    convMap[doc.id] = parseConversation(doc.id, data)
+                }
+            }
+            emitMerged()
+        }
 
-        awaitClose { listener.remove() }
+        // Listener 2: 'chats' (supports existing previous Flutter / Firebase apps)
+        val listenerChats = chatsRef.addSnapshotListener { snapshot, error ->
+            if (error != null) {
+                Log.w("ChatRepository", "Listen chats failed: ${error.message}")
+                return@addSnapshotListener
+            }
+            snapshot?.documents?.forEach { doc ->
+                val data = doc.data ?: return@forEach
+                val participants = extractParticipantsList(data)
+                if (participants.contains(currentUserId) || participants.isEmpty()) {
+                    if (!convMap.containsKey(doc.id) || parseConversation(doc.id, data).lastMessageTimestamp > (convMap[doc.id]?.lastMessageTimestamp ?: 0L)) {
+                        convMap[doc.id] = parseConversation(doc.id, data)
+                    }
+                }
+            }
+            emitMerged()
+        }
+
+        awaitClose {
+            listenerConv.remove()
+            listenerChats.remove()
+        }
     }
 
     /**
@@ -181,44 +219,45 @@ class ChatRepository {
             return@callbackFlow
         }
 
-        val listener = conversationsRef.document(conversationId)
+        val messageMap = mutableMapOf<String, ChatMessage>()
+
+        fun emitSorted() {
+            val sorted = messageMap.values.toList().sortedBy { it.timestamp }
+            trySend(sorted)
+        }
+
+        // 1. Listen under conversations/{id}/messages
+        val listenerConv = conversationsRef.document(conversationId)
             .collection("messages")
-            .orderBy("timestamp", Query.Direction.ASCENDING)
             .addSnapshotListener { snapshot, error ->
                 if (error != null) {
-                    Log.w("ChatRepository", "Listen messages failed: ${error.message}")
+                    Log.w("ChatRepository", "Listen conv messages failed: ${error.message}")
                     return@addSnapshotListener
                 }
-                val messages = mutableListOf<ChatMessage>()
                 snapshot?.documents?.forEach { doc ->
                     val data = doc.data ?: return@forEach
-                    @Suppress("UNCHECKED_CAST")
-                    val deletedForUsers = data["deletedForUsers"] as? List<String> ?: emptyList()
-                    messages.add(
-                        ChatMessage(
-                            id = doc.id,
-                            conversationId = conversationId,
-                            senderId = data["senderId"] as? String ?: "",
-                            senderName = data["senderName"] as? String ?: "",
-                            senderPhotoUrl = data["senderPhotoUrl"] as? String ?: "",
-                            text = data["text"] as? String ?: "",
-                            mediaUrl = data["mediaUrl"] as? String ?: "",
-                            mediaType = data["mediaType"] as? String ?: "text",
-                            voiceDurationSeconds = (data["voiceDurationSeconds"] as? Number)?.toInt() ?: 0,
-                            timestamp = (data["timestamp"] as? Number)?.toLong() ?: 0L,
-                            status = data["status"] as? String ?: "sent",
-                            replyToMessageId = data["replyToMessageId"] as? String ?: "",
-                            replyToText = data["replyToText"] as? String ?: "",
-                            replyToSender = data["replyToSender"] as? String ?: "",
-                            deletedForEveryone = data["deletedForEveryone"] as? Boolean ?: false,
-                            deletedForUsers = deletedForUsers
-                        )
-                    )
+                    messageMap[doc.id] = parseMessage(doc.id, conversationId, data)
                 }
-                trySend(messages)
+                emitSorted()
             }
 
-        awaitClose { listener.remove() }
+        // 2. Also listen under chats/{id}/messages
+        val listenerChats = chatsRef.document(conversationId)
+            .collection("messages")
+            .addSnapshotListener { snapshot, error ->
+                if (error == null) {
+                    snapshot?.documents?.forEach { doc ->
+                        val data = doc.data ?: return@forEach
+                        messageMap[doc.id] = parseMessage(doc.id, conversationId, data)
+                    }
+                    emitSorted()
+                }
+            }
+
+        awaitClose {
+            listenerConv.remove()
+            listenerChats.remove()
+        }
     }
 
     /**
@@ -236,31 +275,54 @@ class ChatRepository {
         return try {
             val msgId = UUID.randomUUID().toString()
             val now = System.currentTimeMillis()
-            val message = ChatMessage(
-                id = msgId,
-                conversationId = conversationId,
-                senderId = currentUser.uid,
-                senderName = currentUser.displayName.ifBlank { currentUser.username },
-                senderPhotoUrl = currentUser.photoUrl,
-                text = text,
-                mediaUrl = mediaUrl,
-                mediaType = mediaType,
-                voiceDurationSeconds = voiceDurationSeconds,
-                timestamp = now,
-                status = "sent",
-                replyToMessageId = replyTo?.id ?: "",
-                replyToText = replyTo?.text ?: "",
-                replyToSender = replyTo?.senderName ?: ""
+            val senderName = currentUser.displayName.ifBlank { currentUser.username }
+
+            val messageMap = mapOf(
+                "id" to msgId,
+                "conversationId" to conversationId,
+                "senderId" to currentUser.uid,
+                "sender_id" to currentUser.uid,
+                "senderUid" to currentUser.uid,
+                "senderName" to senderName,
+                "senderPhotoUrl" to currentUser.photoUrl,
+                "text" to text,
+                "message" to text,
+                "content" to text,
+                "mediaUrl" to mediaUrl,
+                "media_url" to mediaUrl,
+                "imageUrl" to mediaUrl,
+                "mediaType" to mediaType,
+                "type" to mediaType,
+                "voiceDurationSeconds" to voiceDurationSeconds,
+                "timestamp" to now,
+                "time" to now,
+                "createdAt" to now,
+                "status" to "sent",
+                "replyToMessageId" to (replyTo?.id ?: ""),
+                "replyToText" to (replyTo?.text ?: ""),
+                "replyToSender" to (replyTo?.senderName ?: ""),
+                "deletedForEveryone" to false,
+                "deletedForUsers" to emptyList<String>()
             )
 
-            // Save message
+            // Save under conversations
             conversationsRef.document(conversationId)
                 .collection("messages")
                 .document(msgId)
-                .set(message.toMap())
+                .set(messageMap)
                 .await()
 
-            // Update conversation last message preview
+            // Save under chats as well for backward compatibility
+            try {
+                chatsRef.document(conversationId)
+                    .collection("messages")
+                    .document(msgId)
+                    .set(messageMap)
+                    .await()
+            } catch (e: Exception) {
+                // Ignore if chats collection has different rules
+            }
+
             val previewText = when (mediaType) {
                 "image" -> "📷 Photo"
                 "video" -> "🎥 Video"
@@ -268,13 +330,18 @@ class ChatRepository {
                 "audio" -> "🎵 Audio"
                 else -> text
             }
-            conversationsRef.document(conversationId).update(
-                mapOf(
-                    "lastMessageText" to previewText,
-                    "lastMessageTimestamp" to now,
-                    "lastMessageSenderId" to currentUser.uid
-                )
-            ).await()
+
+            val updatePayload = mapOf(
+                "lastMessageText" to previewText,
+                "lastMessage" to previewText,
+                "last_message" to previewText,
+                "lastMessageTimestamp" to now,
+                "timestamp" to now,
+                "lastMessageSenderId" to currentUser.uid
+            )
+
+            conversationsRef.document(conversationId).set(updatePayload, SetOptions.merge()).await()
+            chatsRef.document(conversationId).set(updatePayload, SetOptions.merge()).await()
 
             Result.success(Unit)
         } catch (e: Exception) {
@@ -307,46 +374,32 @@ class ChatRepository {
         }
     }
 
-    /**
-     * Delete message for everyone
-     */
     suspend fun deleteMessageForEveryone(conversationId: String, messageId: String): Result<Unit> {
         return try {
-            conversationsRef.document(conversationId)
-                .collection("messages")
-                .document(messageId)
-                .update(
-                    mapOf(
-                        "deletedForEveryone" to true,
-                        "text" to "This message was deleted",
-                        "mediaUrl" to ""
-                    )
-                ).await()
+            val updates = mapOf(
+                "deletedForEveryone" to true,
+                "text" to "This message was deleted",
+                "message" to "This message was deleted",
+                "mediaUrl" to ""
+            )
+            conversationsRef.document(conversationId).collection("messages").document(messageId).update(updates).await()
+            chatsRef.document(conversationId).collection("messages").document(messageId).update(updates).await()
             Result.success(Unit)
         } catch (e: Exception) {
             Result.failure(e)
         }
     }
 
-    /**
-     * Delete message for me
-     */
     suspend fun deleteMessageForMe(conversationId: String, messageId: String, currentUserId: String): Result<Unit> {
         return try {
-            conversationsRef.document(conversationId)
-                .collection("messages")
-                .document(messageId)
-                .update("deletedForUsers", FieldValue.arrayUnion(currentUserId))
-                .await()
+            conversationsRef.document(conversationId).collection("messages").document(messageId)
+                .update("deletedForUsers", FieldValue.arrayUnion(currentUserId)).await()
             Result.success(Unit)
         } catch (e: Exception) {
             Result.failure(e)
         }
     }
 
-    /**
-     * Export chat history to formatted text
-     */
     fun exportChatHistory(conversation: Conversation, messages: List<ChatMessage>): String {
         val sdf = SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault())
         val sb = StringBuilder()
@@ -368,5 +421,120 @@ class ChatRepository {
             sb.append("[$time] $sender: $content\n")
         }
         return sb.toString()
+    }
+
+    companion object {
+        fun extractParticipantsList(data: Map<String, Any?>): List<String> {
+            val fromParticipants = data["participants"] as? List<*>
+            if (fromParticipants != null && fromParticipants.isNotEmpty()) {
+                return fromParticipants.filterIsInstance<String>()
+            }
+            val fromUsers = data["users"] as? List<*>
+            if (fromUsers != null && fromUsers.isNotEmpty()) {
+                return fromUsers.filterIsInstance<String>()
+            }
+            val fromMembers = data["members"] as? List<*>
+            if (fromMembers != null && fromMembers.isNotEmpty()) {
+                return fromMembers.filterIsInstance<String>()
+            }
+            val fromIds = data["participantIds"] as? List<*>
+            if (fromIds != null && fromIds.isNotEmpty()) {
+                return fromIds.filterIsInstance<String>()
+            }
+            return emptyList()
+        }
+
+        fun parseConversation(id: String, data: Map<String, Any?>): Conversation {
+            val participants = extractParticipantsList(data)
+            @Suppress("UNCHECKED_CAST")
+            val participantNames = (data["participantNames"] as? Map<String, String>)
+                ?: (data["userNames"] as? Map<String, String>)
+                ?: emptyMap()
+
+            @Suppress("UNCHECKED_CAST")
+            val participantPhotos = (data["participantPhotos"] as? Map<String, String>)
+                ?: (data["userPhotos"] as? Map<String, String>)
+                ?: emptyMap()
+
+            val lastText = (data["lastMessageText"] as? String)
+                ?: (data["lastMessage"] as? String)
+                ?: (data["last_message"] as? String)
+                ?: (data["message"] as? String)
+                ?: ""
+
+            val lastTime = parseTimestamp(
+                data["lastMessageTimestamp"] ?: data["timestamp"] ?: data["lastMessageTime"] ?: data["updatedAt"] ?: data["time"]
+            )
+
+            val groupName = (data["groupName"] as? String)
+                ?: (data["name"] as? String)
+                ?: (data["group_name"] as? String)
+                ?: ""
+
+            return Conversation(
+                id = id,
+                isGroup = data["isGroup"] as? Boolean ?: (groupName.isNotBlank() && participants.size > 2),
+                participants = participants,
+                participantNames = participantNames,
+                participantPhotos = participantPhotos,
+                lastMessageText = lastText,
+                lastMessageTimestamp = lastTime,
+                lastMessageSenderId = (data["lastMessageSenderId"] as? String) ?: (data["senderId"] as? String) ?: "",
+                groupName = groupName,
+                groupPhotoUrl = extractPhotoUrl(data),
+                groupDescription = (data["groupDescription"] as? String) ?: (data["description"] as? String) ?: "",
+                createdBy = (data["createdBy"] as? String) ?: ""
+            )
+        }
+
+        fun parseMessage(docId: String, convId: String, data: Map<String, Any?>): ChatMessage {
+            val text = (data["text"] as? String)
+                ?: (data["message"] as? String)
+                ?: (data["content"] as? String)
+                ?: (data["body"] as? String)
+                ?: (data["msg"] as? String)
+                ?: ""
+
+            val mediaUrl = (data["mediaUrl"] as? String)
+                ?: (data["media_url"] as? String)
+                ?: (data["imageUrl"] as? String)
+                ?: (data["attachmentUrl"] as? String)
+                ?: (data["url"] as? String)
+                ?: ""
+
+            val mediaType = (data["mediaType"] as? String)
+                ?: (data["type"] as? String)
+                ?: if (mediaUrl.isNotEmpty()) "image" else "text"
+
+            val senderId = (data["senderId"] as? String)
+                ?: (data["sender_id"] as? String)
+                ?: (data["senderUid"] as? String)
+                ?: (data["uid"] as? String)
+                ?: ""
+
+            val timestamp = parseTimestamp(data["timestamp"] ?: data["time"] ?: data["createdAt"])
+
+            @Suppress("UNCHECKED_CAST")
+            val deletedForUsers = data["deletedForUsers"] as? List<String> ?: emptyList()
+
+            return ChatMessage(
+                id = docId,
+                conversationId = convId,
+                senderId = senderId,
+                senderName = (data["senderName"] as? String) ?: (data["sender_name"] as? String) ?: "",
+                senderPhotoUrl = extractPhotoUrl(data),
+                text = text,
+                mediaUrl = mediaUrl,
+                mediaType = mediaType,
+                voiceDurationSeconds = (data["voiceDurationSeconds"] as? Number)?.toInt() ?: 0,
+                timestamp = timestamp,
+                status = (data["status"] as? String) ?: "delivered",
+                replyToMessageId = (data["replyToMessageId"] as? String) ?: "",
+                replyToText = (data["replyToText"] as? String) ?: "",
+                replyToSender = (data["replyToSender"] as? String) ?: "",
+                deletedForEveryone = data["deletedForEveryone"] as? Boolean ?: false,
+                deletedForUsers = deletedForUsers
+            )
+        }
     }
 }

@@ -5,9 +5,11 @@ import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -15,6 +17,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -22,6 +25,8 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.CameraAlt
+import androidx.compose.material.icons.filled.Link
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -31,6 +36,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
@@ -74,7 +80,10 @@ fun ProfileEditScreen(
     var about by remember { mutableStateOf("") }
     var phoneNumber by remember { mutableStateOf("") }
     var photoUrl by remember { mutableStateOf("") }
+    var isUploadingPhoto by remember { mutableStateOf(false) }
     var isSaving by remember { mutableStateOf(false) }
+    var showUrlDialog by remember { mutableStateOf(false) }
+    var inputUrl by remember { mutableStateOf("") }
 
     LaunchedEffect(currentUser) {
         currentUser?.let {
@@ -90,16 +99,19 @@ fun ProfileEditScreen(
         contract = ActivityResultContracts.PickVisualMedia()
     ) { uri: Uri? ->
         if (uri != null) {
-            isSaving = true
+            isUploadingPhoto = true
             scope.launch {
                 val uploadRes = CloudinaryUploader.uploadUri(context, uri, "image/*")
                 if (uploadRes.isSuccess) {
-                    photoUrl = uploadRes.getOrNull() ?: photoUrl
-                    Toast.makeText(context, "Photo uploaded!", Toast.LENGTH_SHORT).show()
+                    val newUrl = uploadRes.getOrNull() ?: photoUrl
+                    photoUrl = newUrl
+                    // Auto-save photo immediately into Firestore
+                    userRepo.updatePhotoUrl(currentUserId, newUrl)
+                    Toast.makeText(context, "Profile photo updated & saved!", Toast.LENGTH_SHORT).show()
                 } else {
-                    Toast.makeText(context, "Failed to upload photo", Toast.LENGTH_SHORT).show()
+                    Toast.makeText(context, "Failed to upload photo to Cloudinary", Toast.LENGTH_SHORT).show()
                 }
-                isSaving = false
+                isUploadingPhoto = false
             }
         }
     }
@@ -147,33 +159,68 @@ fun ProfileEditScreen(
                     displayName = displayName.ifBlank { "User" },
                     size = 110.dp
                 )
-                Box(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .clip(CircleShape),
-                    contentAlignment = Alignment.BottomCenter
-                ) {
+
+                if (isUploadingPhoto) {
                     Box(
                         modifier = Modifier
-                            .fillMaxWidth()
-                            .height(34.dp)
-                            .clip(RoundedCornerShape(bottomStart = 55.dp, bottomEnd = 55.dp)),
+                            .fillMaxSize()
+                            .clip(CircleShape)
+                            .background(Color.Black.copy(alpha = 0.5f)),
                         contentAlignment = Alignment.Center
                     ) {
-                        Icon(
-                            Icons.Default.CameraAlt,
-                            contentDescription = "Change photo",
-                            tint = Color.White,
-                            modifier = Modifier.size(20.dp)
-                        )
+                        CircularProgressIndicator(color = Color.White, modifier = Modifier.size(32.dp))
+                    }
+                } else {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .clip(CircleShape),
+                        contentAlignment = Alignment.BottomCenter
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(34.dp)
+                                .clip(RoundedCornerShape(bottomStart = 55.dp, bottomEnd = 55.dp))
+                                .background(Color.Black.copy(alpha = 0.5f)),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Icon(
+                                Icons.Default.CameraAlt,
+                                contentDescription = "Change photo",
+                                tint = Color.White,
+                                modifier = Modifier.size(18.dp)
+                            )
+                        }
                     }
                 }
             }
 
-            Spacer(modifier = Modifier.height(8.dp))
-            Text("Tap to change photo", fontSize = 13.sp, color = PrimaryBlue)
+            Spacer(modifier = Modifier.height(10.dp))
 
-            Spacer(modifier = Modifier.height(24.dp))
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                TextButton(
+                    onClick = {
+                        photoPickerLauncher.launch(
+                            PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)
+                        )
+                    }
+                ) {
+                    Icon(Icons.Default.CameraAlt, contentDescription = null, modifier = Modifier.size(16.dp))
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Text("Choose Photo")
+                }
+
+                Text("•", color = MaterialTheme.colorScheme.onSurfaceVariant)
+
+                TextButton(onClick = { showUrlDialog = true }) {
+                    Icon(Icons.Default.Link, contentDescription = null, modifier = Modifier.size(16.dp))
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Text("Paste URL")
+                }
+            }
+
+            Spacer(modifier = Modifier.height(20.dp))
 
             OutlinedTextField(
                 value = displayName,
@@ -241,7 +288,7 @@ fun ProfileEditScreen(
                         )
                         val res = userRepo.saveUserProfile(updated)
                         if (res.isSuccess) {
-                            Toast.makeText(context, "Profile updated successfully!", Toast.LENGTH_SHORT).show()
+                            Toast.makeText(context, "Profile saved successfully!", Toast.LENGTH_SHORT).show()
                             onNavigateBack()
                         } else {
                             Toast.makeText(context, "Error updating profile", Toast.LENGTH_SHORT).show()
@@ -263,5 +310,47 @@ fun ProfileEditScreen(
                 }
             }
         }
+    }
+
+    if (showUrlDialog) {
+        AlertDialog(
+            onDismissRequest = { showUrlDialog = false },
+            title = { Text("Set Profile Picture URL") },
+            text = {
+                Column {
+                    Text("Paste an image URL from Cloudinary or anywhere on the web:")
+                    Spacer(modifier = Modifier.height(8.dp))
+                    OutlinedTextField(
+                        value = inputUrl,
+                        onValueChange = { inputUrl = it },
+                        label = { Text("Image URL") },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                }
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        val url = inputUrl.trim()
+                        if (url.isNotEmpty()) {
+                            photoUrl = url
+                            scope.launch {
+                                userRepo.updatePhotoUrl(currentUserId, url)
+                                Toast.makeText(context, "Profile picture updated!", Toast.LENGTH_SHORT).show()
+                            }
+                        }
+                        showUrlDialog = false
+                    }
+                ) {
+                    Text("Set Picture")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showUrlDialog = false }) {
+                    Text("Cancel")
+                }
+            }
+        )
     }
 }
