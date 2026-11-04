@@ -16,17 +16,37 @@ jobs:
       - name: Checkout Code
         uses: actions/checkout@v4
 
-      - name: Set up JDK 17
+      - name: Set up JDK 21 (Required for AGP 9.x and Gradle 9.x)
         uses: actions/setup-java@v4
         with:
           distribution: 'temurin'
-          java-version: '17'
-          cache: 'gradle'
+          java-version: '21'
 
-      - name: Generate google-services.json if missing
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '9.3.1'
+
+      - name: Setup Environment Files & Keystore
         run: |
+          # 1. Setup .env file for secrets gradle plugin
+          if [ ! -f .env ]; then
+            cp .env.example .env 2>/dev/null || touch .env
+          fi
+
+          # 2. Decode debug.keystore from base64 if needed
+          if [ -f debug.keystore.base64 ] && [ ! -f debug.keystore ]; then
+            echo "Decoding debug.keystore from base64..."
+            base64 -d debug.keystore.base64 > debug.keystore
+          fi
+          if [ ! -f debug.keystore ]; then
+            echo "Generating fallback debug.keystore..."
+            keytool -genkey -v -keystore debug.keystore -storepass android -alias androiddebugkey -keypass android -keyalg RSA -keysize 2048 -validity 10000 -dname "CN=Android Debug,O=Android,C=US"
+          fi
+
+          # 3. Generate google-services.json if missing
           if [ ! -f app/google-services.json ]; then
-            echo "Creating app/google-services.json..."
+            echo "Generating app/google-services.json..."
             cat << 'EOF' > app/google-services.json
           {
             "project_info": {
@@ -60,15 +80,24 @@ jobs:
           EOF
           fi
 
-      - name: Grant Execute Permission to Gradle
-        run: chmod +x gradlew || true
+          # 4. Ensure gradlew is executable
+          chmod +x gradlew || true
 
       - name: Build Debug APK
-        run: gradle assembleDebug --stacktrace
+        run: |
+          if [ -f ./gradlew ]; then
+            ./gradlew assembleDebug --stacktrace
+          else
+            gradle assembleDebug --stacktrace
+          fi
 
       - name: Build Release Bundle (AAB) & APK (if signing available)
         run: |
-          gradle bundleRelease assembleRelease --stacktrace || echo "Release build skipped without release keystore"
+          if [ -f ./gradlew ]; then
+            ./gradlew bundleRelease assembleRelease --stacktrace || echo "Release build skipped without release key"
+          else
+            gradle bundleRelease assembleRelease --stacktrace || echo "Release build skipped without release key"
+          fi
 
       - name: Upload Debug APK Artifact
         uses: actions/upload-artifact@v4
