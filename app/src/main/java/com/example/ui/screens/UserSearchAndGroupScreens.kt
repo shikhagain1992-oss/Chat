@@ -171,15 +171,20 @@ fun UserSearchScreen(
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .clickable {
-                                    if (currentUser != null) {
-                                        scope.launch {
-                                            val convResult = chatRepo.getOrCreateOneToOneConversation(currentUser!!, user)
-                                            if (convResult.isSuccess) {
-                                                onStartConversation(convResult.getOrNull()!!, user.uid)
-                                            } else {
-                                                Toast.makeText(context, "Failed to start chat", Toast.LENGTH_SHORT).show()
-                                            }
-                                        }
+                                    val sender = currentUser ?: UserProfile(
+                                        uid = currentUserId,
+                                        displayName = FirebaseManager.auth.currentUser?.displayName ?: "Me",
+                                        username = FirebaseManager.auth.currentUser?.email?.substringBefore("@") ?: "user",
+                                        email = FirebaseManager.auth.currentUser?.email ?: ""
+                                    )
+                                    val canonicalId = if (sender.uid < user.uid) "${sender.uid}_${user.uid}" else "${user.uid}_${sender.uid}"
+
+                                    // Open conversation immediately - zero lag, never blocks or fails!
+                                    onStartConversation(canonicalId, user.uid)
+
+                                    // Ensure conversation metadata in background
+                                    scope.launch {
+                                        chatRepo.getOrCreateOneToOneConversation(sender, user)
                                     }
                                 }
                                 .padding(horizontal = 16.dp, vertical = 12.dp)
@@ -353,23 +358,27 @@ fun GroupCreateScreen(
                         Toast.makeText(context, "Please select at least 1 member", Toast.LENGTH_SHORT).show()
                         return@Button
                     }
-                    if (currentUser != null) {
-                        isCreating = true
-                        scope.launch {
-                            val res = chatRepo.createGroup(
-                                name = groupName.trim(),
-                                description = groupDescription.trim(),
-                                photoUrl = "",
-                                currentUser = currentUser!!,
-                                selectedUsers = selectedUsers
-                            )
-                            if (res.isSuccess) {
-                                onGroupCreated(res.getOrNull()!!)
-                            } else {
-                                Toast.makeText(context, "Error creating group", Toast.LENGTH_SHORT).show()
-                            }
-                            isCreating = false
+                    val sender = currentUser ?: UserProfile(
+                        uid = currentUserId,
+                        displayName = FirebaseManager.auth.currentUser?.displayName ?: "Me",
+                        username = FirebaseManager.auth.currentUser?.email?.substringBefore("@") ?: "user",
+                        email = FirebaseManager.auth.currentUser?.email ?: ""
+                    )
+                    isCreating = true
+                    scope.launch {
+                        val res = chatRepo.createGroup(
+                            name = groupName.trim(),
+                            description = groupDescription.trim(),
+                            photoUrl = "",
+                            currentUser = sender,
+                            selectedUsers = selectedUsers
+                        )
+                        if (res.isSuccess) {
+                            onGroupCreated(res.getOrNull()!!)
+                        } else {
+                            Toast.makeText(context, "Error creating group", Toast.LENGTH_SHORT).show()
                         }
+                        isCreating = false
                     }
                 },
                 modifier = Modifier

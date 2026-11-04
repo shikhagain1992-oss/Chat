@@ -140,7 +140,15 @@ fun ChatDetailScreen(
     val currentUserProfile by userRepo.getUserProfile(currentUserId).collectAsState(initial = null)
     val otherUser by userRepo.getUserProfile(otherUserId).collectAsState(initial = null)
 
-    var effectiveConvId by remember { mutableStateOf(conversationId) }
+    val canonicalFallbackId = remember(currentUserId, otherUserId) {
+        if (currentUserId.isNotBlank() && otherUserId.isNotBlank() && otherUserId != "none") {
+            if (currentUserId < otherUserId) "${currentUserId}_${otherUserId}" else "${otherUserId}_${currentUserId}"
+        } else ""
+    }
+
+    var effectiveConvId by remember(conversationId, canonicalFallbackId) {
+        mutableStateOf(if (conversationId.isBlank() || conversationId == "none") canonicalFallbackId else conversationId)
+    }
 
     // Fallback user profile so message sending is NEVER blocked by slow profile fetch
     val activeSender = remember(currentUserProfile, currentUserId) {
@@ -152,14 +160,15 @@ fun ChatDetailScreen(
         )
     }
 
-    // Auto-resolve conversation ID if started from search
+    // Auto-resolve / verify existing conversation ID in background
     LaunchedEffect(conversationId, otherUserId) {
-        if (effectiveConvId.isBlank() || effectiveConvId == "none") {
-            if (otherUserId.isNotBlank() && otherUserId != "none") {
-                val targetUser = otherUser ?: UserProfile(uid = otherUserId)
-                val res = chatRepo.getOrCreateOneToOneConversation(activeSender, targetUser)
-                if (res.isSuccess) {
-                    effectiveConvId = res.getOrNull() ?: conversationId
+        if (otherUserId.isNotBlank() && otherUserId != "none") {
+            val targetUser = otherUser ?: UserProfile(uid = otherUserId)
+            val res = chatRepo.getOrCreateOneToOneConversation(activeSender, targetUser)
+            if (res.isSuccess) {
+                val resolved = res.getOrNull()
+                if (!resolved.isNullOrBlank()) {
+                    effectiveConvId = resolved
                 }
             }
         }
@@ -288,11 +297,12 @@ fun ChatDetailScreen(
                             Icon(Icons.Default.Close, contentDescription = "Close search", tint = TextDarkMuted)
                         }
                     } else {
-                        if (!isGroup && otherUser != null) {
+                        if (!isGroup && otherUserId.isNotBlank() && otherUserId != "none") {
                             IconButton(
                                 onClick = {
                                     scope.launch {
-                                        val res = callRepo.startCall(activeSender, otherUser!!, false)
+                                        val target = otherUser ?: UserProfile(uid = otherUserId)
+                                        val res = callRepo.startCall(activeSender, target, false)
                                         if (res.isSuccess) {
                                             onStartCall(res.getOrNull()!!.id, false)
                                         }
@@ -305,7 +315,8 @@ fun ChatDetailScreen(
                             IconButton(
                                 onClick = {
                                     scope.launch {
-                                        val res = callRepo.startCall(activeSender, otherUser!!, true)
+                                        val target = otherUser ?: UserProfile(uid = otherUserId)
+                                        val res = callRepo.startCall(activeSender, target, true)
                                         if (res.isSuccess) {
                                             onStartCall(res.getOrNull()!!.id, true)
                                         }
