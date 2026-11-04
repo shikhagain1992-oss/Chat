@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <!-- Chat bubble background silhouette -->
+    <path
+        android:fillColor="#0284C7"
+        android:pathData="M28,34 C28,26.27 34.27,20 42,20 L66,20 C73.73,20 80,26.27 80,34 L80,56 C80,63.73 73.73,70 66,70 L48,70 L34,84 L34,70 L42,70 C34.27,70 28,63.73 28,56 Z" />
+    <!-- Bright inner highlight & lightning / N shape -->
+    <path
+        android:fillColor="#38BDF8"
+        android:pathData="M32,36 C32,29.5 37.5,24 44,24 L64,24 C70.5,24 76,29.5 76,36 L76,54 C76,60.5 70.5,66 64,66 L46,66 L38,74 L38,66 C34.5,66 32,60.5 32,54 Z" />
+    <!-- Bold white 'N' / Chat Zap emblem -->
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M43,33 L49,33 L60,51 L60,33 L66,33 L66,57 L60,57 L49,39 L49,57 L43,57 Z" />
+</vector>

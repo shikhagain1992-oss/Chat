@@ -1,0 +1,6 @@
+{
+  "name": "NexChat Pro",
+  "description": "Complete modern real-time messaging, voice & video calling, 24-hour stories, and media sharing with Cloudinary and Firebase.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
