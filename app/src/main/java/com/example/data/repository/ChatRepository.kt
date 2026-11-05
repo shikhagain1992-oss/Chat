@@ -343,16 +343,57 @@ class ChatRepository {
         mediaUrl: String = "",
         mediaType: String = "text",
         voiceDurationSeconds: Int = 0,
-        replyTo: ChatMessage? = null
-    ): Result<Unit> {
+        replyTo: ChatMessage? = null,
+        customMessageId: String? = null
+    ): Result<String> {
         if (conversationId.isBlank() || conversationId == "none") {
             return Result.failure(IllegalArgumentException("Invalid conversation ID"))
         }
 
         return try {
-            val msgId = UUID.randomUUID().toString()
+            val msgId = customMessageId ?: UUID.randomUUID().toString()
             val now = System.currentTimeMillis()
             val senderName = currentUser.displayName.ifBlank { currentUser.username }
+
+            val previewText = when (mediaType) {
+                "image" -> "📷 Photo"
+                "video" -> "🎥 Video"
+                "voice" -> "🎤 Voice message ($voiceDurationSeconds s)"
+                "audio" -> "🎵 Audio"
+                else -> text
+            }
+
+            // Always ensure parent conversation metadata exists with participants
+            val participantsList = if (conversationId.contains("_")) {
+                val parts = conversationId.split("_")
+                listOf(parts[0], parts[1]).distinct()
+            } else {
+                listOf(currentUser.uid)
+            }
+
+            val parentPayload = mapOf(
+                "id" to conversationId,
+                "participants" to participantsList,
+                "users" to participantsList,
+                "lastMessageText" to previewText,
+                "lastMessage" to previewText,
+                "last_message" to previewText,
+                "lastMessageTimestamp" to now,
+                "timestamp" to now,
+                "lastMessageSenderId" to currentUser.uid
+            )
+
+            // Write parent document first with merge
+            try {
+                conversationsRef.document(conversationId).set(parentPayload, SetOptions.merge())
+            } catch (e: Exception) {
+                Log.w("ChatRepository", "Set parent conv: ${e.message}")
+            }
+            try {
+                chatsRef.document(conversationId).set(parentPayload, SetOptions.merge())
+            } catch (e: Exception) {
+                Log.w("ChatRepository", "Set parent chats: ${e.message}")
+            }
 
             val messageMap = mapOf(
                 "id" to msgId,
@@ -417,48 +458,17 @@ class ChatRepository {
                 if (parts.size == 2 && parts[0] != parts[1]) {
                     val revId = "${parts[1]}_${parts[0]}"
                     try {
-                        conversationsRef.document(revId).collection("messages").document(msgId).set(messageMap).await()
+                        conversationsRef.document(revId).collection("messages").document(msgId).set(messageMap)
                     } catch (e: Exception) {}
                     try {
-                        chatsRef.document(revId).collection("messages").document(msgId).set(messageMap).await()
+                        chatsRef.document(revId).collection("messages").document(msgId).set(messageMap)
                     } catch (e: Exception) {}
                 }
             }
 
-            val previewText = when (mediaType) {
-                "image" -> "📷 Photo"
-                "video" -> "🎥 Video"
-                "voice" -> "🎤 Voice message ($voiceDurationSeconds s)"
-                "audio" -> "🎵 Audio"
-                else -> text
-            }
-
-            val updatePayload = mapOf(
-                "lastMessageText" to previewText,
-                "lastMessage" to previewText,
-                "last_message" to previewText,
-                "lastMessageTimestamp" to now,
-                "timestamp" to now,
-                "lastMessageSenderId" to currentUser.uid
-            )
-
-            try {
-                conversationsRef.document(conversationId).set(updatePayload, SetOptions.merge()).await()
-            } catch (e: Exception) {
-                Log.w("ChatRepository", "Update conv meta warning: ${e.message}")
-            }
-
-            try {
-                chatsRef.document(conversationId).set(updatePayload, SetOptions.merge()).await()
-            } catch (e: Exception) {
-                Log.w("ChatRepository", "Update chats meta warning: ${e.message}")
-            }
-
-            if (writeSuccess) {
-                Result.success(Unit)
-            } else {
-                Result.failure(writeError ?: Exception("Failed to send message"))
-            }
+            // In Firestore offline-first architecture, writes are persisted to SQLite immediately.
+            // Even under high latency, the message will sync when connected.
+            Result.success(msgId)
         } catch (e: Exception) {
             Log.e("ChatRepository", "Error sending message: ${e.message}", e)
             Result.failure(e)

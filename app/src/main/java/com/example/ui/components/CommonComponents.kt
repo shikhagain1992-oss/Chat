@@ -8,7 +8,9 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.DoneAll
+import androidx.compose.material.icons.filled.ErrorOutline
 import androidx.compose.material.icons.filled.Person
+import androidx.compose.material.icons.filled.Schedule
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -93,6 +95,14 @@ fun MessageStatusIcon(
     modifier: Modifier = Modifier
 ) {
     when (status) {
+        "sending" -> {
+            Icon(
+                imageVector = Icons.Default.Schedule,
+                contentDescription = "Sending",
+                tint = DeliveredGrey,
+                modifier = modifier.size(13.dp).testTag("status_sending")
+            )
+        }
         "seen" -> {
             Icon(
                 imageVector = Icons.Default.DoneAll,
@@ -107,6 +117,14 @@ fun MessageStatusIcon(
                 contentDescription = "Delivered",
                 tint = DeliveredGrey,
                 modifier = modifier.size(16.dp).testTag("status_delivered")
+            )
+        }
+        "failed" -> {
+            Icon(
+                imageVector = Icons.Default.ErrorOutline,
+                contentDescription = "Failed to send - Tap to retry",
+                tint = Color(0xFFEF4444),
+                modifier = modifier.size(14.dp).testTag("status_failed")
             )
         }
         else -> {

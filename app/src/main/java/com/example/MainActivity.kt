@@ -36,7 +36,12 @@ import com.example.ui.screens.StatusViewerScreen
 import com.example.ui.screens.UserSearchScreen
 import com.example.ui.theme.NexChatTheme
 
+import android.content.Intent
+import androidx.compose.runtime.mutableStateOf
+
 class MainActivity : ComponentActivity() {
+
+    private val incomingCallData = mutableStateOf<Triple<String, Boolean, Boolean>?>(null)
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -55,22 +60,51 @@ class MainActivity : ComponentActivity() {
             )
         }
 
+        checkCallIntent(intent)
+
         setContent {
             NexChatTheme {
                 Surface(
                     modifier = Modifier.fillMaxSize(),
                     color = MaterialTheme.colorScheme.background
                 ) {
-                    NexChatProApp()
+                    NexChatProApp(
+                        incomingCall = incomingCallData.value,
+                        onCallHandled = { incomingCallData.value = null }
+                    )
                 }
             }
+        }
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        checkCallIntent(intent)
+    }
+
+    private fun checkCallIntent(intent: Intent?) {
+        val callId = intent?.getStringExtra("callId")
+        if (!callId.isNullOrBlank()) {
+            val isVideo = intent.getBooleanExtra("isVideo", false)
+            incomingCallData.value = Triple(callId, false, isVideo)
         }
     }
 }
 
 @Composable
-fun NexChatProApp() {
+fun NexChatProApp(
+    incomingCall: Triple<String, Boolean, Boolean>? = null,
+    onCallHandled: () -> Unit = {}
+) {
     val navController = rememberNavController()
+
+    LaunchedEffect(incomingCall) {
+        incomingCall?.let { (callId, isCaller, isVideo) ->
+            navController.navigate(Screen.CallScreen.createRoute(callId, isCaller, isVideo))
+            onCallHandled()
+        }
+    }
 
     // Request permissions gracefully on app startup
     val permissionLauncher = rememberLauncherForActivityResult(

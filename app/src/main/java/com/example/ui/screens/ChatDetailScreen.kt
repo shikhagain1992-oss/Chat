@@ -14,8 +14,13 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -191,6 +196,26 @@ fun ChatDetailScreen(
     var mediaRecorder by remember { mutableStateOf<MediaRecorder?>(null) }
 
     val listState = rememberLazyListState()
+
+    val sendMessageAction: (customId: String?, text: String) -> Unit = { customId, text ->
+        val textToSend = text.trim()
+        if (textToSend.isNotEmpty()) {
+            val reply = replyingToMessage
+            replyingToMessage = null
+            scope.launch {
+                val res = chatRepo.sendMessage(
+                    conversationId = effectiveConvId,
+                    currentUser = activeSender,
+                    text = textToSend,
+                    replyTo = reply,
+                    customMessageId = customId
+                )
+                if (res.isFailure) {
+                    Toast.makeText(context, "Network issue: check connection", Toast.LENGTH_SHORT).show()
+                }
+            }
+        }
+    }
 
     // Auto-mark seen and scroll to bottom
     LaunchedEffect(messages.size) {
@@ -383,7 +408,10 @@ fun ChatDetailScreen(
                         WhiteLightBlueMessageBubble(
                             message = msg,
                             isCurrentUser = msg.senderId == currentUserId,
-                            onLongPress = { selectedMessageForAction = msg }
+                            onLongPress = { selectedMessageForAction = msg },
+                            onRetry = {
+                                sendMessageAction(msg.id, msg.text)
+                            }
                         )
                     }
                 }
@@ -520,6 +548,19 @@ fun ChatDetailScreen(
                                 .testTag("message_input_field"),
                             shape = RoundedCornerShape(24.dp),
                             maxLines = 4,
+                            keyboardOptions = KeyboardOptions(
+                                capitalization = KeyboardCapitalization.Sentences,
+                                imeAction = ImeAction.Send
+                            ),
+                            keyboardActions = KeyboardActions(
+                                onSend = {
+                                    if (inputText.isNotBlank()) {
+                                        val t = inputText
+                                        inputText = ""
+                                        sendMessageAction(null, t)
+                                    }
+                                }
+                            ),
                             colors = OutlinedTextFieldDefaults.colors(
                                 focusedContainerColor = AliceBlue,
                                 unfocusedContainerColor = AliceBlue,
@@ -533,25 +574,10 @@ fun ChatDetailScreen(
                         // Send Button (Guaranteed delivery - fallback activeSender)
                         IconButton(
                             onClick = {
-                                val textToSend = inputText.trim()
-                                if (textToSend.isNotEmpty()) {
+                                if (inputText.isNotBlank()) {
+                                    val t = inputText
                                     inputText = ""
-                                    scope.launch {
-                                        val res = chatRepo.sendMessage(
-                                            conversationId = effectiveConvId,
-                                            currentUser = activeSender,
-                                            text = textToSend,
-                                            replyTo = replyingToMessage
-                                        )
-                                        if (res.isFailure) {
-                                            Toast.makeText(
-                                                context,
-                                                "Failed to send: ${res.exceptionOrNull()?.localizedMessage ?: "Network error"}",
-                                                Toast.LENGTH_SHORT
-                                            ).show()
-                                        }
-                                        replyingToMessage = null
-                                    }
+                                    sendMessageAction(null, t)
                                 }
                             },
                             modifier = Modifier
@@ -647,7 +673,8 @@ fun ChatDetailScreen(
 fun WhiteLightBlueMessageBubble(
     message: ChatMessage,
     isCurrentUser: Boolean,
-    onLongPress: () -> Unit
+    onLongPress: () -> Unit,
+    onRetry: (() -> Unit)? = null
 ) {
     val context = LocalContext.current
     var isPlayingAudio by remember { mutableStateOf(false) }
@@ -805,7 +832,21 @@ fun WhiteLightBlueMessageBubble(
                     )
                     if (isCurrentUser) {
                         Spacer(modifier = Modifier.width(4.dp))
-                        MessageStatusIcon(status = message.status)
+                        if (message.status == "failed") {
+                            Row(
+                                modifier = Modifier
+                                    .clip(RoundedCornerShape(4.dp))
+                                    .clickable { onRetry?.invoke() }
+                                    .padding(horizontal = 2.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                MessageStatusIcon(status = message.status)
+                                Spacer(modifier = Modifier.width(2.dp))
+                                Text("Retry", fontSize = 10.sp, color = Color(0xFFEF4444), fontWeight = FontWeight.Bold)
+                            }
+                        } else {
+                            MessageStatusIcon(status = message.status)
+                        }
                     }
                 }
             }
