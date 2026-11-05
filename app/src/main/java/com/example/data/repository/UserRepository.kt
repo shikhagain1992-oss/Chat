@@ -119,6 +119,40 @@ class UserRepository {
         }
     }
 
+    fun getAllUsersFlow(): Flow<List<UserProfile>> = callbackFlow {
+        val listener = usersRef.addSnapshotListener { snapshot, error ->
+            if (error != null) {
+                Log.w("UserRepository", "getAllUsersFlow listen failed: ${error.message}")
+                return@addSnapshotListener
+            }
+            if (snapshot != null) {
+                val users = snapshot.documents.mapNotNull { doc ->
+                    val data = doc.data ?: return@mapNotNull null
+                    val photo = extractPhotoUrl(data)
+                    val displayName = (data["displayName"] as? String)
+                        ?: (data["display_name"] as? String)
+                        ?: (data["name"] as? String)
+                        ?: (data["username"] as? String)
+                        ?: ""
+                    UserProfile(
+                        uid = doc.id,
+                        username = data["username"] as? String ?: "",
+                        displayName = displayName,
+                        email = data["email"] as? String ?: "",
+                        phoneNumber = (data["phoneNumber"] as? String) ?: (data["phone_number"] as? String) ?: "",
+                        photoUrl = photo,
+                        about = (data["about"] as? String) ?: (data["bio"] as? String) ?: "Hey there! I am using NexChat Pro.",
+                        isOnline = data["isOnline"] as? Boolean ?: false,
+                        lastSeen = parseTimestamp(data["lastSeen"]),
+                        createdAt = parseTimestamp(data["createdAt"])
+                    )
+                }
+                trySend(users)
+            }
+        }
+        awaitClose { listener.remove() }
+    }
+
     suspend fun searchUsers(query: String): List<UserProfile> {
         val currentUid = FirebaseManager.currentUserId
         return try {

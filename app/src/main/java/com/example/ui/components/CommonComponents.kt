@@ -95,7 +95,7 @@ fun MessageStatusIcon(
     modifier: Modifier = Modifier
 ) {
     when (status) {
-        "sending" -> {
+        "pending", "sending", "retrying" -> {
             Icon(
                 imageVector = Icons.Default.Schedule,
                 contentDescription = "Sending",

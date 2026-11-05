@@ -7,6 +7,7 @@ import android.content.Intent
 import android.media.MediaPlayer
 import android.media.MediaRecorder
 import android.net.Uri
+import android.os.Build
 import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.PickVisualMediaRequest
@@ -16,11 +17,6 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
-import androidx.compose.foundation.gestures.detectTapGestures
-import androidx.compose.foundation.text.KeyboardActions
-import androidx.compose.foundation.text.KeyboardOptions
-import androidx.compose.ui.text.input.ImeAction
-import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -29,6 +25,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
@@ -40,13 +37,17 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.Forward
 import androidx.compose.material.icons.automirrored.filled.Send
 import androidx.compose.material.icons.filled.AttachFile
 import androidx.compose.material.icons.filled.Call
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Download
+import androidx.compose.material.icons.filled.GifBox
 import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.PlayArrow
@@ -59,6 +60,7 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -76,6 +78,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -84,11 +87,13 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -105,10 +110,8 @@ import com.example.ui.components.MessageStatusIcon
 import com.example.ui.components.UserAvatar
 import com.example.ui.theme.AliceBlue
 import com.example.ui.theme.BubbleBorderColor
-import com.example.ui.theme.DeliveredGrey
 import com.example.ui.theme.ErrorRed
 import com.example.ui.theme.IceBlue
-import com.example.ui.theme.LightBlueTint
 import com.example.ui.theme.OnlineGreen
 import com.example.ui.theme.PrimaryBlue
 import com.example.ui.theme.PureWhite
@@ -124,6 +127,14 @@ import java.io.File
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
+import java.util.UUID
+
+private val QUICK_GIFS = listOf(
+    "https://media.giphy.com/media/v1.Y2lkPTc5MGI3NjExbXNydG56amJ5Y2N4eW56ZzR2c3B2Zzh6NHRlZ3R2Zzh6NHRlZyZlcD12MV9pbnRlcm5hbF9naWZfYnlfaWQmY3Q9Zw/3o7abKhOpu0NwenH3O/giphy.gif",
+    "https://media.giphy.com/media/l0MYt5jPR6QX5pnqM/giphy.gif",
+    "https://media.giphy.com/media/26u4cqiYI30juCOGY/giphy.gif",
+    "https://media.giphy.com/media/3oz8xIsloV7zOmt81G/giphy.gif"
+)
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -143,11 +154,13 @@ fun ChatDetailScreen(
     val callRepo = remember { CallRepository() }
 
     val currentUserProfile by userRepo.getUserProfile(currentUserId).collectAsState(initial = null)
+    val allUsers by userRepo.getAllUsersFlow().collectAsState(initial = emptyList())
 
     val effectiveOtherId = remember(otherUserId, conversationId, currentUserId) {
-        if (otherUserId.isNotBlank() && otherUserId != "none") otherUserId
-        else if (conversationId.contains("_")) {
-            val parts = conversationId.split("_")
+        val cleanConv = conversationId.removePrefix("conv_")
+        if (otherUserId.isNotBlank() && otherUserId != "none" && otherUserId != "group") otherUserId
+        else if (cleanConv.contains("_") && !cleanConv.startsWith("group_")) {
+            val parts = cleanConv.split("_")
             if (parts.size == 2) {
                 if (parts[0] == currentUserId) parts[1] else parts[0]
             } else ""
@@ -158,15 +171,15 @@ fun ChatDetailScreen(
 
     val canonicalFallbackId = remember(currentUserId, effectiveOtherId) {
         if (currentUserId.isNotBlank() && effectiveOtherId.isNotBlank() && effectiveOtherId != "none") {
-            if (currentUserId < effectiveOtherId) "${currentUserId}_${effectiveOtherId}" else "${effectiveOtherId}_${currentUserId}"
+            chatRepo.getCanonicalOneToOneId(currentUserId, effectiveOtherId)
         } else ""
     }
 
     var effectiveConvId by remember(conversationId, canonicalFallbackId) {
-        mutableStateOf(if (conversationId.isBlank() || conversationId == "none") canonicalFallbackId else conversationId)
+        val clean = conversationId.removePrefix("conv_")
+        mutableStateOf(if (clean.isBlank() || clean == "none") canonicalFallbackId else clean)
     }
 
-    // Fallback user profile so message sending is NEVER blocked by slow profile fetch
     val activeSender = remember(currentUserProfile, currentUserId) {
         currentUserProfile ?: UserProfile(
             uid = currentUserId,
@@ -176,9 +189,8 @@ fun ChatDetailScreen(
         )
     }
 
-    // Auto-resolve / verify existing conversation ID in background
     LaunchedEffect(conversationId, effectiveOtherId) {
-        if (effectiveOtherId.isNotBlank() && effectiveOtherId != "none") {
+        if (!isGroup && effectiveOtherId.isNotBlank() && effectiveOtherId != "none") {
             val targetUser = otherUser ?: UserProfile(uid = effectiveOtherId)
             val res = chatRepo.getOrCreateOneToOneConversation(activeSender, targetUser)
             if (res.isSuccess) {
@@ -190,17 +202,41 @@ fun ChatDetailScreen(
         }
     }
 
-    val messages by chatRepo.getMessagesFlow(effectiveConvId).collectAsState(initial = emptyList())
+    val firestoreMessages by chatRepo.getMessagesFlow(effectiveConvId).collectAsState(initial = emptyList())
+    val conversationMeta by chatRepo.getConversationFlow(effectiveConvId).collectAsState(initial = null)
+
+    // Track local pending / failed messages so UI accurately reflects sending -> sent / failed -> retrying -> sent
+    val localStagedMessages = remember { mutableStateMapOf<String, ChatMessage>() }
+
+    // Remove staged message once Firestore listener confirms it is saved
+    LaunchedEffect(firestoreMessages) {
+        for (remoteMsg in firestoreMessages) {
+            localStagedMessages.remove(remoteMsg.id)
+        }
+    }
+
+    val mergedMessages = remember(firestoreMessages, localStagedMessages.values.toList()) {
+        val map = LinkedHashMap<String, ChatMessage>()
+        firestoreMessages.forEach { map[it.id] = it }
+        localStagedMessages.values.forEach { staged ->
+            if (!map.containsKey(staged.id) || staged.status == "failed" || staged.status == "retrying") {
+                map[staged.id] = staged
+            }
+        }
+        map.values.sortedBy { it.timestamp }
+    }
 
     var inputText by remember { mutableStateOf("") }
     var replyingToMessage by remember { mutableStateOf<ChatMessage?>(null) }
     var selectedMessageForAction by remember { mutableStateOf<ChatMessage?>(null) }
+    var messageToForward by remember { mutableStateOf<ChatMessage?>(null) }
+    var showGifPicker by remember { mutableStateOf(false) }
     var showMenu by remember { mutableStateOf(false) }
     var isSearching by remember { mutableStateOf(false) }
     var searchKeyword by remember { mutableStateOf("") }
     var isUploadingMedia by remember { mutableStateOf(false) }
 
-    // Hold-to-record voice state
+    // Voice recording state
     var isRecordingVoice by remember { mutableStateOf(false) }
     var voiceRecordDuration by remember { mutableIntStateOf(0) }
     var voiceOutputFile by remember { mutableStateOf<File?>(null) }
@@ -208,35 +244,96 @@ fun ChatDetailScreen(
 
     val listState = rememberLazyListState()
 
-    val sendMessageAction: (customId: String?, text: String) -> Unit = { customId, text ->
+    // Update typing indicator when inputText changes
+    LaunchedEffect(inputText, effectiveConvId) {
+        if (effectiveConvId.isNotBlank() && currentUserId.isNotBlank()) {
+            val typing = inputText.trim().isNotEmpty()
+            chatRepo.setTypingStatus(effectiveConvId, currentUserId, typing)
+            if (typing) {
+                delay(4000L)
+                chatRepo.setTypingStatus(effectiveConvId, currentUserId, false)
+            }
+        }
+    }
+
+    DisposableEffect(effectiveConvId) {
+        onDispose {
+            try {
+                mediaRecorder?.release()
+            } catch (_: Exception) {}
+        }
+    }
+
+    // Voice recording timer
+    LaunchedEffect(isRecordingVoice) {
+        if (isRecordingVoice) {
+            voiceRecordDuration = 0
+            while (isRecordingVoice) {
+                delay(1000L)
+                voiceRecordDuration++
+            }
+        }
+    }
+
+    val sendMessageAction: (customId: String?, text: String, mediaUrl: String, mediaType: String) -> Unit = { customId, text, mediaUrl, mediaType ->
         val textToSend = text.trim()
-        if (textToSend.isNotEmpty()) {
+        if (textToSend.isNotEmpty() || mediaUrl.isNotEmpty()) {
+            val msgId = customId?.takeIf { it.isNotBlank() } ?: UUID.randomUUID().toString()
+            val isRetry = customId != null
             val reply = replyingToMessage
-            replyingToMessage = null
+            if (!isRetry) replyingToMessage = null
+
+            val staged = ChatMessage(
+                id = msgId,
+                conversationId = effectiveConvId,
+                senderId = currentUserId,
+                senderName = activeSender.displayName.ifBlank { activeSender.username },
+                senderPhotoUrl = activeSender.photoUrl,
+                text = textToSend,
+                mediaUrl = mediaUrl,
+                mediaType = mediaType,
+                timestamp = localStagedMessages[msgId]?.timestamp ?: System.currentTimeMillis(),
+                status = if (isRetry) "retrying" else "sending",
+                replyToMessageId = reply?.id ?: "",
+                replyToText = reply?.text ?: "",
+                replyToSender = reply?.senderName ?: ""
+            )
+            localStagedMessages[msgId] = staged
+
             scope.launch {
                 val res = chatRepo.sendMessage(
                     conversationId = effectiveConvId,
                     currentUser = activeSender,
                     text = textToSend,
+                    mediaUrl = mediaUrl,
+                    mediaType = mediaType,
                     replyTo = reply,
-                    customMessageId = customId
+                    customMessageId = msgId
                 )
-                if (res.isFailure) {
-                    Toast.makeText(context, "Network issue: check connection", Toast.LENGTH_SHORT).show()
+                if (res.isSuccess) {
+                    localStagedMessages.remove(msgId)
+                } else {
+                    localStagedMessages[msgId] = staged.copy(status = "failed")
+                    Toast.makeText(
+                        context,
+                        "Could not send message. Tap Retry on the message.",
+                        Toast.LENGTH_SHORT
+                    ).show()
                 }
             }
         }
     }
 
     // Auto-mark seen and scroll to bottom
-    LaunchedEffect(messages.size) {
-        if (messages.isNotEmpty()) {
-            chatRepo.markMessagesAsSeen(effectiveConvId, currentUserId)
-            listState.animateScrollToItem(messages.size - 1)
+    LaunchedEffect(mergedMessages.size) {
+        if (mergedMessages.isNotEmpty()) {
+            val prefs = context.getSharedPreferences("nexchat_prefs", Context.MODE_PRIVATE)
+            val readReceipts = prefs.getBoolean("read_receipts", true)
+            chatRepo.markMessagesAsSeen(effectiveConvId, currentUserId, readReceipts)
+            listState.animateScrollToItem(mergedMessages.size - 1)
         }
     }
 
-    // Media Picker launcher with crash-proof try/catch
     val mediaPickerLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.PickVisualMedia()
     ) { uri: Uri? ->
@@ -244,20 +341,21 @@ fun ChatDetailScreen(
             isUploadingMedia = true
             scope.launch {
                 try {
-                    val mimeType = try { context.contentResolver.getType(uri) ?: "image/jpeg" } catch (e: Exception) { "image/jpeg" }
-                    val mediaType = if (mimeType.startsWith("video")) "video" else "image"
+                    val mimeType = try { context.contentResolver.getType(uri) ?: "image/jpeg" } catch (_: Exception) { "image/jpeg" }
+                    val mediaType = when {
+                        mimeType.startsWith("video") -> "video"
+                        mimeType.contains("gif") -> "gif"
+                        else -> "image"
+                    }
                     val uploadResult = CloudinaryUploader.uploadUri(context, uri, mimeType)
                     if (uploadResult.isSuccess) {
                         val url = uploadResult.getOrNull() ?: ""
-                        chatRepo.sendMessage(
-                            conversationId = effectiveConvId,
-                            currentUser = activeSender,
-                            text = if (mediaType == "video") "🎥 Video" else "📷 Photo",
-                            mediaUrl = url,
-                            mediaType = mediaType,
-                            replyTo = replyingToMessage
-                        )
-                        replyingToMessage = null
+                        val label = when (mediaType) {
+                            "video" -> "🎥 Video"
+                            "gif" -> "👾 GIF"
+                            else -> "📷 Photo"
+                        }
+                        sendMessageAction(null, label, url, mediaType)
                     } else {
                         Toast.makeText(context, "Media upload failed. Please try again.", Toast.LENGTH_SHORT).show()
                     }
@@ -268,6 +366,15 @@ fun ChatDetailScreen(
                     isUploadingMedia = false
                 }
             }
+        }
+    }
+
+    val isOtherTyping = remember(conversationMeta, effectiveOtherId, currentUserId) {
+        val typingMap = conversationMeta?.typingUsers ?: emptyMap()
+        if (isGroup) {
+            typingMap.any { (uid, typing) -> uid != currentUserId && typing }
+        } else {
+            typingMap[effectiveOtherId] == true
         }
     }
 
@@ -298,8 +405,8 @@ fun ChatDetailScreen(
                     } else {
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             UserAvatar(
-                                photoUrl = if (isGroup) "" else otherUser?.photoUrl,
-                                displayName = if (isGroup) "Group" else (otherUser?.displayName ?: "User"),
+                                photoUrl = if (isGroup) conversationMeta?.groupPhotoUrl else otherUser?.photoUrl,
+                                displayName = if (isGroup) (conversationMeta?.groupName?.ifBlank { "Group" } ?: "Group") else (otherUser?.displayName ?: "User"),
                                 size = 42.dp,
                                 isOnline = otherUser?.isOnline == true,
                                 showOnlineIndicator = !isGroup
@@ -307,7 +414,7 @@ fun ChatDetailScreen(
                             Spacer(modifier = Modifier.width(10.dp))
                             Column {
                                 Text(
-                                    text = if (isGroup) "Group Chat" else (otherUser?.displayName ?: "Contact"),
+                                    text = if (isGroup) (conversationMeta?.groupName?.ifBlank { "Group Chat" } ?: "Group Chat") else (otherUser?.displayName ?: "Contact"),
                                     fontSize = 16.sp,
                                     fontWeight = FontWeight.Bold,
                                     color = TextDark,
@@ -315,9 +422,15 @@ fun ChatDetailScreen(
                                     overflow = TextOverflow.Ellipsis
                                 )
                                 Text(
-                                    text = if (isGroup) "Members" else if (otherUser?.isOnline == true) "Online" else "Offline",
+                                    text = when {
+                                        isOtherTyping -> "typing..."
+                                        isGroup -> "${conversationMeta?.participants?.size ?: 2} members"
+                                        otherUser?.isOnline == true -> "Online"
+                                        else -> "Offline"
+                                    },
                                     fontSize = 12.sp,
-                                    color = if (otherUser?.isOnline == true) OnlineGreen else TextDarkMuted
+                                    fontWeight = if (isOtherTyping) FontWeight.SemiBold else FontWeight.Normal,
+                                    color = if (isOtherTyping || otherUser?.isOnline == true) OnlineGreen else TextDarkMuted
                                 )
                             }
                         }
@@ -390,12 +503,20 @@ fun ChatDetailScreen(
                             }
                             DropdownMenu(expanded = showMenu, onDismissRequest = { showMenu = false }) {
                                 DropdownMenuItem(
+                                    text = { Text("Send Animated GIF") },
+                                    leadingIcon = { Icon(Icons.Default.GifBox, contentDescription = null, tint = PrimaryBlue) },
+                                    onClick = {
+                                        showMenu = false
+                                        showGifPicker = true
+                                    }
+                                )
+                                DropdownMenuItem(
                                     text = { Text("Export Chat History") },
                                     leadingIcon = { Icon(Icons.Default.Download, contentDescription = null, tint = PrimaryBlue) },
                                     onClick = {
                                         showMenu = false
                                         val conv = Conversation(id = effectiveConvId, isGroup = isGroup)
-                                        val exported = chatRepo.exportChatHistory(conv, messages)
+                                        val exported = chatRepo.exportChatHistory(conv, mergedMessages)
                                         val shareIntent = Intent(Intent.ACTION_SEND).apply {
                                             type = "text/plain"
                                             putExtra(Intent.EXTRA_SUBJECT, "NexChat Pro Export")
@@ -417,12 +538,11 @@ fun ChatDetailScreen(
                 .fillMaxSize()
                 .padding(padding)
         ) {
-            val displayMessages = remember(messages, searchKeyword) {
-                if (searchKeyword.isBlank()) messages
-                else messages.filter { it.text.lowercase().contains(searchKeyword.lowercase()) }
+            val displayMessages = remember(mergedMessages, searchKeyword) {
+                if (searchKeyword.isBlank()) mergedMessages
+                else mergedMessages.filter { it.text.lowercase().contains(searchKeyword.lowercase()) }
             }
 
-            // Message Bubble List
             LazyColumn(
                 state = listState,
                 modifier = Modifier
@@ -439,7 +559,7 @@ fun ChatDetailScreen(
                             isCurrentUser = msg.senderId == currentUserId,
                             onLongPress = { selectedMessageForAction = msg },
                             onRetry = {
-                                sendMessageAction(msg.id, msg.text)
+                                sendMessageAction(msg.id, msg.text, msg.mediaUrl, msg.mediaType)
                             }
                         )
                     }
@@ -447,7 +567,6 @@ fun ChatDetailScreen(
                 item { Spacer(modifier = Modifier.height(6.dp)) }
             }
 
-            // Uploading Media Progress Bar
             if (isUploadingMedia) {
                 Row(
                     modifier = Modifier
@@ -462,7 +581,6 @@ fun ChatDetailScreen(
                 }
             }
 
-            // Reply Preview Banner
             replyingToMessage?.let { replyMsg ->
                 Row(
                     modifier = Modifier
@@ -483,7 +601,7 @@ fun ChatDetailScreen(
                 }
             }
 
-            // Input Row (White & Light Blue Mix)
+            // Input Row
             Surface(
                 color = PureWhite,
                 shadowElevation = 4.dp,
@@ -510,44 +628,65 @@ fun ChatDetailScreen(
                             Text("Recording Voice: ${voiceRecordDuration}s", color = ErrorRed, fontWeight = FontWeight.Bold)
                         }
 
-                        IconButton(
-                            onClick = {
-                                try {
-                                    mediaRecorder?.stop()
-                                    mediaRecorder?.release()
+                        Row {
+                            IconButton(
+                                onClick = {
+                                    try {
+                                        mediaRecorder?.stop()
+                                        mediaRecorder?.release()
+                                    } catch (_: Exception) {}
                                     mediaRecorder = null
                                     isRecordingVoice = false
-
-                                    val file = voiceOutputFile
-                                    if (file != null && file.exists()) {
-                                        scope.launch {
-                                            isUploadingMedia = true
-                                            val uploadResult = CloudinaryUploader.uploadFile(file, "audio/mp4")
-                                            val url = uploadResult.getOrNull() ?: ""
-                                            chatRepo.sendMessage(
-                                                conversationId = effectiveConvId,
-                                                currentUser = activeSender,
-                                                text = "🎤 Voice message",
-                                                mediaUrl = url,
-                                                mediaType = "voice",
-                                                voiceDurationSeconds = voiceRecordDuration,
-                                                replyTo = replyingToMessage
-                                            )
-                                            replyingToMessage = null
-                                            isUploadingMedia = false
-                                            file.delete()
-                                        }
-                                    }
-                                } catch (e: Exception) {
-                                    isRecordingVoice = false
+                                    voiceOutputFile?.delete()
                                 }
-                            },
-                            modifier = Modifier
-                                .clip(CircleShape)
-                                .background(PrimaryBlue)
-                                .testTag("stop_voice_send_btn")
-                        ) {
-                            Icon(Icons.AutoMirrored.Filled.Send, contentDescription = "Send Voice", tint = Color.White)
+                            ) {
+                                Icon(Icons.Default.Close, contentDescription = "Cancel Voice", tint = ErrorRed)
+                            }
+
+                            IconButton(
+                                onClick = {
+                                    try {
+                                        mediaRecorder?.stop()
+                                        mediaRecorder?.release()
+                                        mediaRecorder = null
+                                        isRecordingVoice = false
+
+                                        val file = voiceOutputFile
+                                        if (file != null && file.exists()) {
+                                            val dur = voiceRecordDuration.coerceAtLeast(1)
+                                            scope.launch {
+                                                isUploadingMedia = true
+                                                val uploadResult = CloudinaryUploader.uploadFile(file, "audio/mp4")
+                                                val url = uploadResult.getOrNull() ?: ""
+                                                if (url.isNotEmpty()) {
+                                                    chatRepo.sendMessage(
+                                                        conversationId = effectiveConvId,
+                                                        currentUser = activeSender,
+                                                        text = "🎤 Voice message",
+                                                        mediaUrl = url,
+                                                        mediaType = "voice",
+                                                        voiceDurationSeconds = dur,
+                                                        replyTo = replyingToMessage
+                                                    )
+                                                    replyingToMessage = null
+                                                } else {
+                                                    Toast.makeText(context, "Voice upload failed", Toast.LENGTH_SHORT).show()
+                                                }
+                                                isUploadingMedia = false
+                                                file.delete()
+                                            }
+                                        }
+                                    } catch (e: Exception) {
+                                        isRecordingVoice = false
+                                    }
+                                },
+                                modifier = Modifier
+                                    .clip(CircleShape)
+                                    .background(PrimaryBlue)
+                                    .testTag("stop_voice_send_btn")
+                            ) {
+                                Icon(Icons.AutoMirrored.Filled.Send, contentDescription = "Send Voice", tint = Color.White)
+                            }
                         }
                     }
                 } else {
@@ -586,7 +725,7 @@ fun ChatDetailScreen(
                                     if (inputText.isNotBlank()) {
                                         val t = inputText
                                         inputText = ""
-                                        sendMessageAction(null, t)
+                                        sendMessageAction(null, t, "", "text")
                                     }
                                 }
                             ),
@@ -600,13 +739,49 @@ fun ChatDetailScreen(
 
                         Spacer(modifier = Modifier.width(6.dp))
 
-                        // Send Button (Guaranteed delivery - fallback activeSender)
+                        if (inputText.isBlank()) {
+                            // Voice Record Button when input is empty
+                            IconButton(
+                                onClick = {
+                                    try {
+                                        val outFile = File(context.cacheDir, "voice_${System.currentTimeMillis()}.m4a")
+                                        voiceOutputFile = outFile
+                                        val recorder = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                                            MediaRecorder(context)
+                                        } else {
+                                            @Suppress("DEPRECATION")
+                                            MediaRecorder()
+                                        }
+                                        recorder.apply {
+                                            setAudioSource(MediaRecorder.AudioSource.MIC)
+                                            setOutputFormat(MediaRecorder.OutputFormat.MPEG_4)
+                                            setAudioEncoder(MediaRecorder.AudioEncoder.AAC)
+                                            setOutputFile(outFile.absolutePath)
+                                            prepare()
+                                            start()
+                                        }
+                                        mediaRecorder = recorder
+                                        isRecordingVoice = true
+                                    } catch (e: Exception) {
+                                        Toast.makeText(context, "Grant microphone permission to record voice notes", Toast.LENGTH_SHORT).show()
+                                    }
+                                },
+                                modifier = Modifier
+                                    .clip(CircleShape)
+                                    .background(IceBlue)
+                                    .testTag("record_voice_button")
+                            ) {
+                                Icon(Icons.Default.Mic, contentDescription = "Record Voice", tint = PrimaryBlue)
+                            }
+                            Spacer(modifier = Modifier.width(4.dp))
+                        }
+
                         IconButton(
                             onClick = {
                                 if (inputText.isNotBlank()) {
                                     val t = inputText
                                     inputText = ""
-                                    sendMessageAction(null, t)
+                                    sendMessageAction(null, t, "", "text")
                                 }
                             },
                             modifier = Modifier
@@ -626,7 +801,7 @@ fun ChatDetailScreen(
         }
     }
 
-    // Message action context dialog
+    // Message Action Dialog (Reply, Forward, Copy, Delete for Me, Delete for Everyone)
     selectedMessageForAction?.let { msg ->
         val isSender = msg.senderId == currentUserId
         AlertDialog(
@@ -644,6 +819,18 @@ fun ChatDetailScreen(
                         Icon(Icons.Default.Reply, contentDescription = null, tint = PrimaryBlue)
                         Spacer(modifier = Modifier.width(10.dp))
                         Text("Reply", color = PrimaryBlue)
+                    }
+
+                    TextButton(
+                        onClick = {
+                            messageToForward = msg
+                            selectedMessageForAction = null
+                        },
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Icon(Icons.AutoMirrored.Filled.Forward, contentDescription = null, tint = PrimaryBlue)
+                        Spacer(modifier = Modifier.width(10.dp))
+                        Text("Forward Message", color = PrimaryBlue)
                     }
 
                     if (msg.text.isNotEmpty()) {
@@ -691,6 +878,100 @@ fun ChatDetailScreen(
             dismissButton = {
                 TextButton(onClick = { selectedMessageForAction = null }) {
                     Text("Cancel")
+                }
+            }
+        )
+    }
+
+    // Forward Message Target Contact Picker Dialog
+    messageToForward?.let { forwardMsg ->
+        val contacts = allUsers.filter { it.uid != currentUserId && it.uid.isNotBlank() }
+        AlertDialog(
+            onDismissRequest = { messageToForward = null },
+            title = { Text("Forward Message To", fontWeight = FontWeight.Bold) },
+            text = {
+                LazyColumn(modifier = Modifier.heightIn(max = 300.dp)) {
+                    items(contacts, key = { it.uid }) { user ->
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable {
+                                    scope.launch {
+                                        val convRes = chatRepo.getOrCreateOneToOneConversation(activeSender, user)
+                                        val targetConvId = convRes.getOrNull() ?: chatRepo.getCanonicalOneToOneId(currentUserId, user.uid)
+                                        val res = chatRepo.forwardMessage(targetConvId, activeSender, forwardMsg)
+                                        if (res.isSuccess) {
+                                            Toast.makeText(context, "Forwarded to ${user.displayName}", Toast.LENGTH_SHORT).show()
+                                        } else {
+                                            Toast.makeText(context, "Forward failed", Toast.LENGTH_SHORT).show()
+                                        }
+                                        messageToForward = null
+                                    }
+                                }
+                                .padding(vertical = 8.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            UserAvatar(photoUrl = user.photoUrl, displayName = user.displayName, size = 40.dp)
+                            Spacer(modifier = Modifier.width(12.dp))
+                            Column {
+                                Text(user.displayName.ifBlank { user.username }, fontWeight = FontWeight.SemiBold)
+                                Text("@${user.username}", fontSize = 12.sp, color = TextDarkMuted)
+                            }
+                        }
+                        HorizontalDivider()
+                    }
+                }
+            },
+            confirmButton = {},
+            dismissButton = {
+                TextButton(onClick = { messageToForward = null }) {
+                    Text("Cancel")
+                }
+            }
+        )
+    }
+
+    // Quick GIF Picker Dialog
+    if (showGifPicker) {
+        AlertDialog(
+            onDismissRequest = { showGifPicker = false },
+            title = { Text("Send a GIF", fontWeight = FontWeight.Bold) },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    QUICK_GIFS.forEachIndexed { idx, gifUrl ->
+                        Surface(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable {
+                                    showGifPicker = false
+                                    sendMessageAction(null, "👾 GIF", gifUrl, "gif")
+                                },
+                            shape = RoundedCornerShape(10.dp),
+                            color = IceBlue
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(10.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                AsyncImage(
+                                    model = gifUrl,
+                                    contentDescription = "GIF ${idx + 1}",
+                                    modifier = Modifier
+                                        .size(56.dp)
+                                        .clip(RoundedCornerShape(8.dp)),
+                                    contentScale = ContentScale.Crop
+                                )
+                                Spacer(modifier = Modifier.width(12.dp))
+                                Text("Tap to send Reaction GIF #${idx + 1}", fontWeight = FontWeight.Medium)
+                            }
+                        }
+                    }
+                }
+            },
+            confirmButton = {},
+            dismissButton = {
+                TextButton(onClick = { showGifPicker = false }) {
+                    Text("Close")
                 }
             }
         )
@@ -746,6 +1027,16 @@ fun WhiteLightBlueMessageBubble(
             shadowElevation = 1.dp
         ) {
             Column(modifier = Modifier.padding(10.dp)) {
+                if (message.forwarded) {
+                    Text(
+                        text = "↪ Forwarded",
+                        fontSize = 11.sp,
+                        fontStyle = FontStyle.Italic,
+                        color = PrimaryBlue,
+                        modifier = Modifier.padding(bottom = 3.dp)
+                    )
+                }
+
                 // Quoted Reply Preview
                 if (message.replyToText.isNotEmpty()) {
                     Box(
@@ -764,8 +1055,8 @@ fun WhiteLightBlueMessageBubble(
                     Spacer(modifier = Modifier.height(4.dp))
                 }
 
-                // Media: Image
-                if (message.mediaType == "image" && message.mediaUrl.isNotEmpty()) {
+                // Media: Image or GIF
+                if ((message.mediaType == "image" || message.mediaType == "gif") && message.mediaUrl.isNotEmpty()) {
                     AsyncImage(
                         model = message.mediaUrl,
                         contentDescription = "Shared image",
@@ -775,6 +1066,31 @@ fun WhiteLightBlueMessageBubble(
                             .height(180.dp)
                             .clip(RoundedCornerShape(10.dp))
                     )
+                    Spacer(modifier = Modifier.height(4.dp))
+                }
+
+                // Media: Video
+                if (message.mediaType == "video" && message.mediaUrl.isNotEmpty()) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(10.dp))
+                            .background(Color(0xFF0A192F))
+                            .clickable {
+                                try {
+                                    val intent = Intent(Intent.ACTION_VIEW, Uri.parse(message.mediaUrl))
+                                    context.startActivity(intent)
+                                } catch (_: Exception) {}
+                            }
+                            .padding(16.dp),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(Icons.Default.PlayArrow, contentDescription = "Play Video", tint = Color.White, modifier = Modifier.size(28.dp))
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text("Tap to Play Video", color = Color.White, fontWeight = FontWeight.SemiBold, fontSize = 13.sp)
+                        }
+                    }
                     Spacer(modifier = Modifier.height(4.dp))
                 }
 
@@ -843,7 +1159,8 @@ fun WhiteLightBlueMessageBubble(
                     Text(
                         text = message.text,
                         fontSize = 15.sp,
-                        color = textColor
+                        fontStyle = if (message.deletedForEveryone) FontStyle.Italic else FontStyle.Normal,
+                        color = if (message.deletedForEveryone) TextDarkMuted else textColor
                     )
                 }
 

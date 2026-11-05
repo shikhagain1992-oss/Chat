@@ -60,6 +60,9 @@ class MainActivity : ComponentActivity() {
             )
         }
 
+        val prefs = getSharedPreferences("nexchat_prefs", MODE_PRIVATE)
+        com.example.ui.theme.ThemeState.isDarkMode.value = prefs.getBoolean("dark_mode", false)
+
         checkCallIntent(intent)
 
         setContent {
@@ -87,6 +90,14 @@ class MainActivity : ComponentActivity() {
         val callId = intent?.getStringExtra("callId")
         if (!callId.isNullOrBlank()) {
             val isVideo = intent.getBooleanExtra("isVideo", false)
+            val acceptFromNotif = intent.getBooleanExtra("acceptFromNotification", false)
+            if (acceptFromNotif) {
+                val stopIntent = Intent(this, com.example.service.NexChatCallService::class.java).apply {
+                    action = com.example.service.NexChatCallService.ACTION_ACCEPT_CALL
+                    putExtra(com.example.service.NexChatCallService.EXTRA_CALL_ID, callId)
+                }
+                startService(stopIntent)
+            }
             incomingCallData.value = Triple(callId, false, isVideo)
         }
     }

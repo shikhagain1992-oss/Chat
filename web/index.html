@@ -711,6 +711,12 @@
         </div>
 
         <div class="sidebar-actions">
+          <button class="icon-btn" title="Toggle Dark/Light Theme" onclick="toggleWebTheme()">
+            <i data-lucide="moon" style="width: 18px; height: 18px;"></i>
+          </button>
+          <button class="icon-btn" title="New Group" onclick="promptNewGroup()">
+            <i data-lucide="users" style="width: 18px; height: 18px;"></i>
+          </button>
           <button class="icon-btn" title="New Chat" onclick="promptNewChat()">
             <i data-lucide="message-square-plus" style="width: 19px; height: 19px;"></i>
           </button>
@@ -758,7 +764,7 @@
         <p style="margin-top: 6px; font-size: 14px; max-width: 320px;">Select a conversation or tap Contacts to start messaging with real-time sync.</p>
       </div>
 
-      <div id="chat-active" style="display: none; height: 100%; display: flex; flex-direction: column;">
+      <div id="chat-active" style="display: none; height: 100%; flex-direction: column;">
         <div class="chat-header">
           <div style="display: flex; align-items: center; gap: 12px; min-width: 0;">
             <button class="icon-btn" id="mobile-back-btn" style="display: none;" onclick="closeMobileChat()">
@@ -784,13 +790,25 @@
           <!-- Live chat messages -->
         </div>
 
+        <!-- Reply Preview Bar -->
+        <div id="reply-preview-bar" style="display: none; padding: 8px 16px; background: var(--bg-surface-light); border-top: 1px solid var(--border); align-items: center; justify-content: space-between; font-size: 12px;">
+          <div>
+            <strong id="reply-preview-sender" style="color: var(--primary);">Replying</strong>
+            <div id="reply-preview-text" style="color: var(--text-muted); max-width: 360px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;"></div>
+          </div>
+          <button class="icon-btn" onclick="cancelReply()" style="width: 26px; height: 26px;">✕</button>
+        </div>
+
         <!-- Chat Input Bar -->
         <div class="chat-input-bar">
-          <label class="icon-btn" title="Send Media (Cloudinary)" style="cursor: pointer;">
+          <label class="icon-btn" title="Send Photo, Video, GIF or Audio (Cloudinary)" style="cursor: pointer;">
             <i data-lucide="paperclip" style="width: 20px; height: 20px;"></i>
             <input type="file" id="media-file-input" style="display: none;" onchange="handleFileUpload(event)">
           </label>
-          <input type="text" id="chat-input" class="chat-input" placeholder="Type a message..." onkeydown="handleInputKeyDown(event)">
+          <button class="icon-btn" id="voice-record-btn" title="Record Voice Note" onclick="toggleVoiceRecording()">
+            <i data-lucide="mic" style="width: 19px; height: 19px;"></i>
+          </button>
+          <input type="text" id="chat-input" class="chat-input" placeholder="Type a message..." oninput="handleTypingInput()" onkeydown="handleInputKeyDown(event)">
           <button class="btn-send" onclick="sendTextMessage()" title="Send">
             <i data-lucide="send" style="width: 18px; height: 18px;"></i>
           </button>
@@ -879,7 +897,7 @@
 
   <!-- Fullscreen In-Call Active Screen -->
   <div id="active-call-modal">
-    <div style="text-align: center; margin-top: 20px;">
+    <div style="text-align: center; margin-top: 20px; z-index: 5;">
       <div id="call-active-type" style="font-size: 14px; text-transform: uppercase; letter-spacing: 1px; color: #38BDF8; margin-bottom: 8px;">Voice Call</div>
       <h2 id="call-active-name" style="font-size: 24px; font-weight: 700;">Recipient</h2>
       <div id="call-active-status" style="font-size: 15px; color: #94A3B8; margin-top: 6px;">Calling...</div>
@@ -887,23 +905,27 @@
     </div>
 
     <!-- Center Avatar / Video Area -->
-    <div style="position: relative; display: flex; align-items: center; justify-content: center; width: 100%; max-width: 500px; height: 320px;">
+    <div style="position: relative; display: flex; align-items: center; justify-content: center; width: 100%; max-width: 560px; height: 340px;">
       <div id="call-avatar-container">
         <div id="call-active-avatar" class="call-pulse-avatar" style="display: flex; align-items: center; justify-content: center; font-size: 44px; background: var(--primary);">
           R
         </div>
       </div>
-      <video id="call-remote-video" autoplay playsinline style="width: 100%; height: 100%; object-fit: cover; border-radius: 16px; display: none;"></video>
-      <video id="call-local-video" autoplay playsinline muted style="position: absolute; bottom: 12px; right: 12px; width: 100px; height: 140px; object-fit: cover; border-radius: 10px; border: 2px solid #38BDF8; display: none;"></video>
+      <video id="call-remote-video" autoplay playsinline style="width: 100%; height: 100%; object-fit: cover; border-radius: 16px; display: none; background: #0A192F;"></video>
+      <video id="call-local-video" autoplay playsinline muted style="position: absolute; bottom: 12px; right: 12px; width: 110px; height: 150px; object-fit: cover; border-radius: 12px; border: 2px solid #38BDF8; display: none; z-index: 10; transform: scaleX(-1);"></video>
+      <audio id="call-remote-audio" autoplay></audio>
     </div>
 
     <!-- Call Controls -->
-    <div class="call-controls">
+    <div class="call-controls" style="z-index: 10;">
       <button class="call-ctrl-btn btn-toggle-muted" id="btn-call-mic" onclick="toggleCallMic()" title="Mute/Unmute">
         <i data-lucide="mic" id="call-mic-icon" style="width: 24px; height: 24px;"></i>
       </button>
       <button class="call-ctrl-btn btn-toggle-muted" id="btn-call-cam" onclick="toggleCallCamera()" title="Toggle Camera" style="display: none;">
         <i data-lucide="video" id="call-cam-icon" style="width: 24px; height: 24px;"></i>
+      </button>
+      <button class="call-ctrl-btn btn-toggle-muted" id="btn-call-switch-cam" onclick="switchCallCamera()" title="Switch Front/Rear Camera" style="display: none;">
+        <i data-lucide="refresh-cw" style="width: 22px; height: 22px;"></i>
       </button>
       <button class="call-ctrl-btn btn-end-call" onclick="endCurrentCall()" title="End Call">
         <i data-lucide="phone-off" style="width: 26px; height: 26px;"></i>
@@ -951,7 +973,7 @@
 
     const CLOUDINARY_CLOUD = "emoxfdx6";
     const CLOUDINARY_PRESET = "ml_default";
-    const CLOUDINARY_UPLOAD_URL = `https://api.cloudinary.com/v1_1/${CLOUDINARY_CLOUD}/image/upload`;
+    const CLOUDINARY_UPLOAD_URL = `https://api.cloudinary.com/v1_1/${CLOUDINARY_CLOUD}/auto/upload`;
 
     // Global App State
     let currentUser = null;
@@ -964,42 +986,125 @@
     let contactsList = [];
     let callsList = [];
     let statusesList = [];
+    let conversationsListenerUnsubscribe = null;
     let messageListenerUnsubscribe = null;
+    let activeConvMetaUnsubscribe = null;
     let incomingCallListenerUnsubscribe = null;
+    let replyingToMsg = null;
+    let stagedMessagesMap = new Map();
+    let inFlightMsgIds = new Set();
+    let typingTimeout = null;
+    let isWebDarkMode = false;
 
-    // Call Engine State
+    // Voice Recording State
+    let webMediaRecorder = null;
+    let webVoiceChunks = [];
+    let isWebRecordingVoice = false;
+
+    // Real WebRTC Call Engine State
     let currentCallId = null;
     let activeCallDocListener = null;
+    let remoteCandidatesUnsubscribe = null;
+    let callRingTimeout = null;
     let callTimerInterval = null;
     let callSeconds = 0;
+    let peerConnection = null;
     let localStream = null;
+    let remoteStream = null;
+    let pendingRemoteCandidates = [];
+    let isRemoteDescSet = false;
     let isMicMuted = false;
     let isCameraOff = false;
+    let currentCameraFacingMode = 'user';
     let audioContext = null;
     let ringOscillator1 = null;
     let ringOscillator2 = null;
     let ringGainNode = null;
     let pendingIncomingCall = null;
 
+    const RTC_CONFIG = {
+      iceServers: [
+        { urls: ['stun:stun.l.google.com:19302', 'stun:stun1.l.google.com:19302', 'stun:stun2.l.google.com:19302'] }
+      ]
+    };
+
     lucide.createIcons();
+
+    function getCanonicalConvId(uid1, uid2) {
+      const u1 = (uid1 || '').replace(/^conv_/, '');
+      const u2 = (uid2 || '').replace(/^conv_/, '');
+      return [u1, u2].sort().join('_');
+    }
+
+    function clearAllSessionState() {
+      if (conversationsListenerUnsubscribe) { conversationsListenerUnsubscribe(); conversationsListenerUnsubscribe = null; }
+      if (messageListenerUnsubscribe) { messageListenerUnsubscribe(); messageListenerUnsubscribe = null; }
+      if (activeConvMetaUnsubscribe) { activeConvMetaUnsubscribe(); activeConvMetaUnsubscribe = null; }
+      if (incomingCallListenerUnsubscribe) { incomingCallListenerUnsubscribe(); incomingCallListenerUnsubscribe = null; }
+      cleanupCallState();
+      conversationsList = [];
+      contactsList = [];
+      callsList = [];
+      statusesList = [];
+      stagedMessagesMap.clear();
+      inFlightMsgIds.clear();
+      activeConversationId = null;
+      activeRecipient = null;
+      const msgEl = document.getElementById('chat-messages');
+      if (msgEl) msgEl.innerHTML = '';
+      const sideEl = document.getElementById('sidebar-list');
+      if (sideEl) sideEl.innerHTML = '';
+    }
 
     // 2. Auth State Observer
     auth.onAuthStateChanged(async (user) => {
       if (user) {
+        if (currentUser && currentUser.uid !== user.uid) {
+          clearAllSessionState();
+        }
         currentUser = user;
         document.getElementById('auth-screen').style.display = 'none';
         document.getElementById('app-container').style.display = 'flex';
         await loadUserProfile(user.uid);
+        db.collection('users').doc(user.uid).set({ isOnline: true, lastSeen: Date.now() }, { merge: true }).catch(()=>{});
         listenConversations();
         loadContacts();
         listenIncomingCalls();
       } else {
+        if (currentUser) {
+          db.collection('users').doc(currentUser.uid).set({ isOnline: false, lastSeen: Date.now() }, { merge: true }).catch(()=>{});
+        }
         currentUser = null;
+        currentUserProfile = null;
+        clearAllSessionState();
         document.getElementById('auth-screen').style.display = 'flex';
         document.getElementById('app-container').style.display = 'none';
-        if (incomingCallListenerUnsubscribe) incomingCallListenerUnsubscribe();
       }
     });
+
+    function toggleWebTheme() {
+      isWebDarkMode = !isWebDarkMode;
+      const root = document.documentElement;
+      if (isWebDarkMode) {
+        root.style.setProperty('--bg-deep', '#0A192F');
+        root.style.setProperty('--bg-surface', '#112240');
+        root.style.setProperty('--bg-surface-light', '#1E293B');
+        root.style.setProperty('--text-main', '#F1F5F9');
+        root.style.setProperty('--text-muted', '#94A3B8');
+        root.style.setProperty('--border', '#334155');
+        root.style.setProperty('--bubble-sent', '#1E3A8A');
+        root.style.setProperty('--bubble-received', '#1E293B');
+      } else {
+        root.style.setProperty('--bg-deep', '#F4F9FD');
+        root.style.setProperty('--bg-surface', '#FFFFFF');
+        root.style.setProperty('--bg-surface-light', '#EBF5FB');
+        root.style.setProperty('--text-main', '#0D253F');
+        root.style.setProperty('--text-muted', '#5A738E');
+        root.style.setProperty('--border', '#BAE6FD');
+        root.style.setProperty('--bubble-sent', '#D4EEFC');
+        root.style.setProperty('--bubble-received', '#FFFFFF');
+      }
+    }
 
     // Load / sync user profile
     async function loadUserProfile(uid) {
@@ -1018,6 +1123,13 @@
           } else {
             avatarEl.innerHTML = `${name.charAt(0).toUpperCase()}<div class="online-dot"></div>`;
           }
+        } else {
+          currentUserProfile = {
+            uid: uid,
+            displayName: currentUser.displayName || (currentUser.email ? currentUser.email.split('@')[0] : 'User'),
+            username: currentUser.email ? currentUser.email.split('@')[0] : 'user',
+            photoUrl: ''
+          };
         }
       } catch (e) {
         console.warn("Profile load:", e);
@@ -1096,11 +1208,14 @@
 
     async function handleSignOut() {
       if (confirm("Sign out of NexChat Pro?")) {
+        if (currentUser) {
+          await db.collection('users').doc(currentUser.uid).set({ isOnline: false, lastSeen: Date.now() }, { merge: true }).catch(()=>{});
+        }
+        clearAllSessionState();
         await auth.signOut();
       }
     }
 
-    // Helper: Parse timestamps from numbers, Firestore Timestamps, and strings
     function getTimestampMillis(ts) {
       if (!ts) return Date.now();
       if (typeof ts === 'number') return ts;
@@ -1123,7 +1238,14 @@
     function extractConversationMeta(conv, myUid) {
       const parts = conv.participants || conv.users || conv.members || conv.participantIds || [];
       const isGroup = !!conv.isGroup;
-      const otherId = parts.find(p => p !== myUid) || '';
+      let otherId = parts.find(p => p !== myUid) || '';
+      if (!otherId && !isGroup && conv.id) {
+        const cleanId = conv.id.replace(/^conv_/, '');
+        if (cleanId.includes('_')) {
+          const split = cleanId.split('_');
+          if (split.length === 2) otherId = (split[0] === myUid) ? split[1] : split[0];
+        }
+      }
 
       let title = conv.groupName || conv.name || conv.title || '';
       if (!isGroup && otherId) {
@@ -1157,39 +1279,43 @@
     }
 
     function listenConversations() {
+      if (!currentUser) return;
       const uid = currentUser.uid;
+      if (conversationsListenerUnsubscribe) conversationsListenerUnsubscribe();
 
-      // Realtime listener for 'conversations'
-      db.collection('conversations').onSnapshot(snap => {
-        const map = new Map();
+      conversationsListenerUnsubscribe = db.collection('conversations')
+        .where('participants', 'array-contains', uid)
+        .onSnapshot(snap => {
+          const dedupMap = new Map();
 
-        snap.forEach(doc => {
-          const data = doc.data();
-          const parts = data.participants || data.users || data.members || [];
-          if (parts.includes(uid) || parts.length === 0) {
-            map.set(doc.id, { id: doc.id, ...data });
-          }
-        });
-
-        // Also merge 'chats' collection for backwards compatibility
-        db.collection('chats').get().then(chatsSnap => {
-          chatsSnap.forEach(doc => {
-            const data = doc.data();
+          function addConvDoc(docId, data) {
             const parts = data.participants || data.users || data.members || [];
-            if ((parts.includes(uid) || parts.length === 0) && !map.has(doc.id)) {
-              map.set(doc.id, { id: doc.id, ...data });
+            const isGroup = !!data.isGroup;
+            let key = docId.replace(/^conv_/, '');
+            if (!isGroup && parts.length === 2) {
+              key = [parts[0], parts[1]].sort().join('_');
             }
-          });
+            const existing = dedupMap.get(key);
+            const ts = getTimestampMillis(data.lastMessageTimestamp || data.timestamp);
+            const existingTs = existing ? getTimestampMillis(existing.lastMessageTimestamp || existing.timestamp) : 0;
+            if (!existing || ts >= existingTs) {
+              dedupMap.set(key, { id: docId.replace(/^conv_/, ''), rawId: docId, ...data });
+            }
+          }
 
-          conversationsList = Array.from(map.values());
-          if (currentTab === 'chats') renderSidebarList();
-        }).catch(err => {
-          conversationsList = Array.from(map.values());
-          if (currentTab === 'chats') renderSidebarList();
+          snap.forEach(doc => addConvDoc(doc.id, doc.data()));
+
+          db.collection('chats').where('participants', 'array-contains', uid).get().then(chatsSnap => {
+            chatsSnap.forEach(doc => addConvDoc(doc.id, doc.data()));
+            conversationsList = Array.from(dedupMap.values());
+            if (currentTab === 'chats') renderSidebarList();
+          }).catch(() => {
+            conversationsList = Array.from(dedupMap.values());
+            if (currentTab === 'chats') renderSidebarList();
+          });
+        }, err => {
+          console.warn("Conversations listener warning:", err);
         });
-      }, err => {
-        console.warn("Conversations listener warning:", err);
-      });
     }
 
     function renderSidebarList() {
@@ -1230,9 +1356,10 @@
       });
     }
 
-    // 4. Open Conversation with Robust Error Handlers
+    // 4. Open Conversation with Canonical + Legacy Listeners & Typing Indicator
     function openConversation(convId, title, photo, otherId) {
-      activeConversationId = convId;
+      const canonicalId = (otherId && !convId.startsWith('group_')) ? getCanonicalConvId(currentUser.uid, otherId) : convId.replace(/^conv_/, '');
+      activeConversationId = canonicalId;
       activeRecipient = { id: otherId, name: title, photo: photo };
 
       document.getElementById('chat-empty').style.display = 'none';
@@ -1252,44 +1379,132 @@
         document.getElementById('mobile-back-btn').style.display = 'flex';
       }
 
-      // Cleanup prior listener
       if (messageListenerUnsubscribe) {
         messageListenerUnsubscribe();
         messageListenerUnsubscribe = null;
       }
+      if (activeConvMetaUnsubscribe) {
+        activeConvMetaUnsubscribe();
+        activeConvMetaUnsubscribe = null;
+      }
+
+      // Listen for typing indicator on conversation metadata
+      activeConvMetaUnsubscribe = db.collection('conversations').doc(canonicalId).onSnapshot(doc => {
+        if (!doc.exists) return;
+        const data = doc.data() || {};
+        const typingUsers = data.typingUsers || {};
+        const statusEl = document.getElementById('active-chat-status');
+        if (otherId && typingUsers[otherId]) {
+          statusEl.innerText = 'typing...';
+          statusEl.style.color = 'var(--online)';
+        } else {
+          statusEl.innerText = 'Online';
+          statusEl.style.color = 'var(--online)';
+        }
+      }, () => {});
 
       const msgMap = new Map();
 
       function updateAndRenderMessages() {
-        const msgs = Array.from(msgMap.values());
+        for (const [id, msg] of msgMap.entries()) {
+          if (stagedMessagesMap.has(id) && stagedMessagesMap.get(id).status !== 'failed') {
+            stagedMessagesMap.delete(id);
+          }
+        }
+        const merged = new Map(msgMap);
+        for (const [id, staged] of stagedMessagesMap.entries()) {
+          if (staged.conversationId === canonicalId) {
+            merged.set(id, staged);
+          }
+        }
+        const msgs = Array.from(merged.values()).filter(m => !(m.deletedForUsers || []).includes(currentUser.uid));
         msgs.sort((a, b) => getTimestampMillis(a.timestamp || a.time) - getTimestampMillis(b.timestamp || b.time));
         renderMessages(msgs);
+        markWebMessagesSeen(canonicalId, msgs);
       }
 
-      // 1. Listen under conversations/{convId}/messages
-      messageListenerUnsubscribe = db.collection('conversations').doc(convId).collection('messages')
+      const unsub1 = db.collection('conversations').doc(canonicalId).collection('messages')
         .onSnapshot(snap => {
           snap.forEach(doc => msgMap.set(doc.id, { id: doc.id, ...doc.data() }));
+          updateAndRenderMessages();
+        }, err => console.warn("Conv messages listener notice:", err));
 
-          // 2. Also check chats/{convId}/messages
-          db.collection('chats').doc(convId).collection('messages').get().then(cSnap => {
-            cSnap.forEach(doc => {
-              if (!msgMap.has(doc.id)) msgMap.set(doc.id, { id: doc.id, ...doc.data() });
-            });
-            updateAndRenderMessages();
-          }).catch(() => {
-            updateAndRenderMessages();
+      // Also check legacy conv_ prefixed document if any
+      const unsub2 = db.collection('conversations').doc('conv_' + canonicalId).collection('messages')
+        .onSnapshot(snap => {
+          snap.forEach(doc => {
+            if (!msgMap.has(doc.id)) msgMap.set(doc.id, { id: doc.id, ...doc.data() });
           });
-        }, err => {
-          console.warn("Conv messages listener notice:", err);
-          // Fallback to chats collection directly if conversations listener fails
-          db.collection('chats').doc(convId).collection('messages').get().then(cSnap => {
-            cSnap.forEach(doc => msgMap.set(doc.id, { id: doc.id, ...doc.data() }));
-            updateAndRenderMessages();
-          }).catch(() => updateAndRenderMessages());
-        });
+          updateAndRenderMessages();
+        }, () => {});
+
+      messageListenerUnsubscribe = () => {
+        unsub1();
+        unsub2();
+      };
 
       renderSidebarList();
+    }
+
+    async function markWebMessagesSeen(convId, messages) {
+      if (!currentUser || !convId) return;
+      const unseen = messages.filter(m => m.senderId && m.senderId !== currentUser.uid && m.status !== 'seen');
+      for (const m of unseen) {
+        db.collection('conversations').doc(convId).collection('messages').doc(m.id).update({ status: 'seen' }).catch(()=>{});
+      }
+    }
+
+    function setReplyMessage(msgId, senderName, text) {
+      replyingToMsg = { id: msgId, senderName: senderName, text: text };
+      document.getElementById('reply-preview-sender').innerText = `Replying to ${senderName}`;
+      document.getElementById('reply-preview-text').innerText = text;
+      document.getElementById('reply-preview-bar').style.display = 'flex';
+      document.getElementById('chat-input').focus();
+    }
+
+    function cancelReply() {
+      replyingToMsg = null;
+      document.getElementById('reply-preview-bar').style.display = 'none';
+    }
+
+    async function forwardWebMessage(msgId, text, mediaUrl, mediaType) {
+      const targetSearch = prompt("Enter contact name or username to forward this message to:");
+      if (!targetSearch) return;
+      const match = contactsList.find(c => {
+        const n = (c.displayName || c.name || c.username || '').toLowerCase();
+        return n.includes(targetSearch.toLowerCase());
+      });
+      if (!match) {
+        alert("Contact not found.");
+        return;
+      }
+      const targetConvId = getCanonicalConvId(currentUser.uid, match.id || match.uid);
+      await sendMessageInternal({
+        convId: targetConvId,
+        text: text,
+        mediaUrl: mediaUrl,
+        mediaType: mediaType,
+        forwarded: true
+      });
+      alert(`Message forwarded to ${match.displayName || match.username}!`);
+    }
+
+    async function deleteWebMessageForMe(msgId) {
+      if (!activeConversationId || !currentUser) return;
+      await db.collection('conversations').doc(activeConversationId).collection('messages').doc(msgId).update({
+        deletedForUsers: firebase.firestore.FieldValue.arrayUnion(currentUser.uid)
+      }).catch(()=>{});
+    }
+
+    async function deleteWebMessageForEveryone(msgId) {
+      if (!activeConversationId) return;
+      await db.collection('conversations').doc(activeConversationId).collection('messages').doc(msgId).update({
+        deletedForEveryone: true,
+        text: "🚫 This message was deleted",
+        message: "🚫 This message was deleted",
+        mediaUrl: "",
+        imageUrl: ""
+      }).catch(()=>{});
     }
 
     function renderMessages(messages) {
@@ -1315,30 +1530,70 @@
         const mediaType = msg.mediaType || msg.type || (mediaUrl ? 'image' : 'text');
         const time = formatTime(msg.timestamp || msg.time);
         const isDeleted = !!msg.deletedForEveryone;
+        const status = msg.status || 'sent';
 
         const row = document.createElement('div');
         row.className = `message-row ${isSent ? 'sent' : 'received'}`;
 
+        let forwardedHtml = msg.forwarded ? `<div style="font-size:11px;font-style:italic;color:var(--primary);margin-bottom:3px;">↪ Forwarded</div>` : '';
+        let replyHtml = '';
+        if (msg.replyToText) {
+          replyHtml = `<div style="background:rgba(2,136,209,0.08);border-left:3px solid var(--primary);padding:4px 8px;border-radius:6px;margin-bottom:4px;font-size:12px;">
+            <div style="font-weight:700;color:var(--primary);font-size:11px;">${msg.replyToSender || 'Reply'}</div>
+            <div style="color:var(--text-muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${msg.replyToText}</div>
+          </div>`;
+        }
+
         let mediaHtml = '';
         if (!isDeleted) {
-          if (mediaType === 'image' && mediaUrl) {
+          if ((mediaType === 'image' || mediaType === 'gif') && mediaUrl) {
             mediaHtml = `<img src="${mediaUrl}" class="message-media-img" onclick="window.open('${mediaUrl}', '_blank')">`;
           } else if (mediaType === 'video' && mediaUrl) {
             mediaHtml = `<video controls src="${mediaUrl}" style="max-width: 260px; border-radius: 10px; margin-bottom: 6px;"></video>`;
-          } else if (mediaType === 'audio' || mediaType === 'voice') {
+          } else if ((mediaType === 'audio' || mediaType === 'voice') && mediaUrl) {
             mediaHtml = `<audio controls src="${mediaUrl}" style="max-width: 220px; margin-bottom: 6px;"></audio>`;
           }
         }
 
         const displayText = isDeleted ? '<em>🚫 This message was deleted</em>' : text;
+        const safeSender = (msg.senderName || 'User').replace(/'/g, "\\'");
+        const safeText = (text || '').replace(/'/g, "\\'");
+        const safeMedia = (mediaUrl || '').replace(/'/g, "\\'");
+
+        let statusBadge = '';
+        if (isSent) {
+          if (status === 'sending' || status === 'retrying' || status === 'pending') {
+            statusBadge = `<span style="color:var(--text-muted);font-size:10px;">⏳</span>`;
+          } else if (status === 'failed') {
+            statusBadge = `<span onclick="retryFailedMessage('${msg.id}')" style="color:var(--danger);font-weight:700;cursor:pointer;text-decoration:underline;">⚠️ Retry</span>`;
+          } else if (status === 'seen') {
+            statusBadge = `<span class="ticks-seen">✓✓</span>`;
+          } else if (status === 'delivered') {
+            statusBadge = `<span style="color:var(--text-muted);">✓✓</span>`;
+          } else {
+            statusBadge = `<span style="color:var(--text-muted);">✓</span>`;
+          }
+        }
+
+        const actionsHtml = !isDeleted ? `
+          <div style="display:flex;gap:8px;margin-top:4px;font-size:10px;opacity:0.75;">
+            <span style="cursor:pointer;color:var(--primary);" onclick="setReplyMessage('${msg.id}','${safeSender}','${safeText}')">Reply</span>
+            <span style="cursor:pointer;color:var(--primary);" onclick="forwardWebMessage('${msg.id}','${safeText}','${safeMedia}','${mediaType}')">Forward</span>
+            <span style="cursor:pointer;color:var(--danger);" onclick="deleteWebMessageForMe('${msg.id}')">Delete</span>
+            ${isSent ? `<span style="cursor:pointer;color:var(--danger);font-weight:600;" onclick="deleteWebMessageForEveryone('${msg.id}')">Unsend</span>` : ''}
+          </div>
+        ` : '';
 
         row.innerHTML = `
           <div class="message-bubble">
+            ${forwardedHtml}
+            ${replyHtml}
             ${mediaHtml}
             ${displayText ? `<div>${displayText}</div>` : ''}
+            ${actionsHtml}
             <div class="message-time">
               ${time}
-              ${isSent ? `<span class="ticks-seen">✓✓</span>` : ''}
+              ${statusBadge}
             </div>
           </div>
         `;
@@ -1348,60 +1603,166 @@
       container.scrollTop = container.scrollHeight;
     }
 
-    // 5. Send Message to both collections
-    async function sendTextMessage() {
-      const input = document.getElementById('chat-input');
-      const text = input.value.trim();
-      if (!text || !activeConversationId) return;
+    // 5. Canonical Message Sending with Optimistic UI & Retry without Duplication
+    async function sendMessageInternal({ convId, text, mediaUrl = '', mediaType = 'text', customId = null, forwarded = false }) {
+      const targetConvId = convId || activeConversationId;
+      if (!targetConvId || !currentUser) return;
+      if (!text && !mediaUrl) return;
 
-      input.value = '';
-      const now = Date.now();
-      const senderName = currentUserProfile.displayName || currentUserProfile.name || 'User';
+      const msgId = customId || ('msg_' + Date.now() + '_' + Math.random().toString(36).substring(2, 8));
+      if (inFlightMsgIds.has(msgId)) return;
+      inFlightMsgIds.add(msgId);
+
+      const now = stagedMessagesMap.has(msgId) ? stagedMessagesMap.get(msgId).timestamp : Date.now();
+      const senderName = (currentUserProfile && (currentUserProfile.displayName || currentUserProfile.name)) || 'User';
+      const senderPhoto = (currentUserProfile && currentUserProfile.photoUrl) || '';
+
+      const replyObj = customId ? null : replyingToMsg;
+      if (!customId && replyingToMsg) cancelReply();
 
       const msgData = {
-        conversationId: activeConversationId,
+        id: msgId,
+        conversationId: targetConvId,
         senderId: currentUser.uid,
         sender_id: currentUser.uid,
         senderUid: currentUser.uid,
         senderName: senderName,
-        senderPhotoUrl: currentUserProfile.photoUrl || '',
+        senderPhotoUrl: senderPhoto,
         text: text,
         message: text,
         content: text,
-        mediaUrl: '',
-        mediaType: 'text',
+        mediaUrl: mediaUrl,
+        media_url: mediaUrl,
+        imageUrl: mediaUrl,
+        mediaType: mediaType,
+        type: mediaType,
         timestamp: now,
         time: now,
         createdAt: now,
-        status: 'sent'
+        status: 'sent',
+        replyToMessageId: replyObj ? replyObj.id : '',
+        replyToText: replyObj ? replyObj.text : '',
+        replyToSender: replyObj ? replyObj.senderName : '',
+        forwarded: !!forwarded,
+        deletedForEveryone: false,
+        deletedForUsers: []
       };
 
-      try {
-        await db.collection('conversations').doc(activeConversationId).collection('messages').add(msgData);
-      } catch (e) {
-        console.warn("Conv message send fallback:", e);
-      }
+      stagedMessagesMap.set(msgId, { ...msgData, status: customId ? 'retrying' : 'sending' });
 
-      try {
-        await db.collection('chats').doc(activeConversationId).collection('messages').add(msgData);
-      } catch (e) {
-        console.warn("Chat message send fallback:", e);
-      }
+      const parts = targetConvId.includes('_') && !targetConvId.startsWith('group_')
+        ? targetConvId.split('_')
+        : [currentUser.uid, activeRecipient?.id].filter(Boolean);
 
-      const updateData = {
+      const parentUpdate = {
+        id: targetConvId,
+        participants: parts,
+        users: parts,
         lastMessageText: text,
         lastMessage: text,
+        last_message: text,
         lastMessageTimestamp: now,
         timestamp: now,
-        lastMessageSenderId: currentUser.uid
+        lastMessageSenderId: currentUser.uid,
+        typingUsers: { [currentUser.uid]: false }
       };
 
-      db.collection('conversations').doc(activeConversationId).set(updateData, { merge: true }).catch(()=>{});
-      db.collection('chats').doc(activeConversationId).set(updateData, { merge: true }).catch(()=>{});
+      try {
+        await db.collection('conversations').doc(targetConvId).set(parentUpdate, { merge: true });
+        await db.collection('conversations').doc(targetConvId).collection('messages').doc(msgId).set(msgData);
+        stagedMessagesMap.delete(msgId);
+      } catch (err) {
+        console.error("Message write failed:", err);
+        stagedMessagesMap.set(msgId, { ...msgData, status: 'failed' });
+      } finally {
+        inFlightMsgIds.delete(msgId);
+      }
+    }
+
+    async function retryFailedMessage(msgId) {
+      const failed = stagedMessagesMap.get(msgId);
+      if (!failed) return;
+      await sendMessageInternal({
+        convId: failed.conversationId,
+        text: failed.text,
+        mediaUrl: failed.mediaUrl,
+        mediaType: failed.mediaType,
+        customId: msgId,
+        forwarded: failed.forwarded
+      });
+    }
+
+    async function sendTextMessage() {
+      const input = document.getElementById('chat-input');
+      const text = input.value.trim();
+      if (!text || !activeConversationId) return;
+      input.value = '';
+      await sendMessageInternal({ convId: activeConversationId, text: text });
     }
 
     function handleInputKeyDown(e) {
-      if (e.key === 'Enter') sendTextMessage();
+      if (e.key === 'Enter' && !e.shiftKey) {
+        e.preventDefault();
+        sendTextMessage();
+      }
+    }
+
+    function handleTypingInput() {
+      if (!activeConversationId || !currentUser) return;
+      db.collection('conversations').doc(activeConversationId).set({
+        typingUsers: { [currentUser.uid]: true }
+      }, { merge: true }).catch(()=>{});
+      if (typingTimeout) clearTimeout(typingTimeout);
+      typingTimeout = setTimeout(() => {
+        if (activeConversationId && currentUser) {
+          db.collection('conversations').doc(activeConversationId).set({
+            typingUsers: { [currentUser.uid]: false }
+          }, { merge: true }).catch(()=>{});
+        }
+      }, 3000);
+    }
+
+    async function toggleVoiceRecording() {
+      if (!activeConversationId) return;
+      const btn = document.getElementById('voice-record-btn');
+      if (isWebRecordingVoice && webMediaRecorder) {
+        webMediaRecorder.stop();
+        isWebRecordingVoice = false;
+        btn.style.color = '';
+        return;
+      }
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        webVoiceChunks = [];
+        webMediaRecorder = new MediaRecorder(stream);
+        webMediaRecorder.ondataavailable = e => { if (e.data.size > 0) webVoiceChunks.push(e.data); };
+        webMediaRecorder.onstop = async () => {
+          stream.getTracks().forEach(t => t.stop());
+          const blob = new Blob(webVoiceChunks, { type: 'audio/webm' });
+          const formData = new FormData();
+          formData.append('file', blob, 'voice.webm');
+          formData.append('upload_preset', CLOUDINARY_PRESET);
+          try {
+            const res = await fetch(CLOUDINARY_UPLOAD_URL, { method: 'POST', body: formData });
+            const data = await res.json();
+            if (data.secure_url) {
+              await sendMessageInternal({
+                convId: activeConversationId,
+                text: '🎤 Voice message',
+                mediaUrl: data.secure_url,
+                mediaType: 'voice'
+              });
+            }
+          } catch (err) {
+            console.warn("Voice upload failed:", err);
+          }
+        };
+        webMediaRecorder.start();
+        isWebRecordingVoice = true;
+        btn.style.color = 'var(--danger)';
+      } catch (e) {
+        alert("Microphone permission is required to record voice notes.");
+      }
     }
 
     // Media Upload (Cloudinary)
@@ -1417,91 +1778,39 @@
         const res = await fetch(CLOUDINARY_UPLOAD_URL, { method: 'POST', body: formData });
         const data = await res.json();
         if (data.secure_url) {
+          const isGif = file.type.includes('gif');
           const isImg = file.type.startsWith('image');
           const isAud = file.type.startsWith('audio');
           const isVid = file.type.startsWith('video');
-          const type = isImg ? 'image' : isAud ? 'audio' : isVid ? 'video' : 'file';
+          const type = isGif ? 'gif' : isImg ? 'image' : isAud ? 'audio' : isVid ? 'video' : 'file';
+          const label = isGif ? '👾 GIF' : isImg ? '📷 Photo' : isVid ? '🎥 Video' : isAud ? '🎵 Audio' : '📎 Attachment';
 
-          const now = Date.now();
-          const senderName = currentUserProfile.displayName || currentUserProfile.name || 'User';
-          const label = isImg ? '📷 Photo' : isVid ? '🎥 Video' : '📎 Attachment';
-
-          const msgData = {
-            conversationId: activeConversationId,
-            senderId: currentUser.uid,
-            sender_id: currentUser.uid,
-            senderUid: currentUser.uid,
-            senderName: senderName,
-            senderPhotoUrl: currentUserProfile.photoUrl || '',
+          await sendMessageInternal({
+            convId: activeConversationId,
             text: label,
-            message: label,
-            content: label,
             mediaUrl: data.secure_url,
-            imageUrl: data.secure_url,
-            mediaType: type,
-            timestamp: now,
-            time: now,
-            status: 'sent'
-          };
-
-          await db.collection('conversations').doc(activeConversationId).collection('messages').add(msgData).catch(()=>{});
-          await db.collection('chats').doc(activeConversationId).collection('messages').add(msgData).catch(()=>{});
-
-          const updateData = {
-            lastMessageText: label,
-            lastMessage: label,
-            lastMessageTimestamp: now,
-            timestamp: now,
-            lastMessageSenderId: currentUser.uid
-          };
-          db.collection('conversations').doc(activeConversationId).set(updateData, { merge: true }).catch(()=>{});
-          db.collection('chats').doc(activeConversationId).set(updateData, { merge: true }).catch(()=>{});
+            mediaType: type
+          });
         }
       } catch (err) {
         alert("Upload error: " + err.message);
       }
     }
 
-    // 6. Contact Resolver: Connects immediately to existing conversation or creates new
+    // 6. Contact Resolver: Uses Canonical ID matching Android (${minUid}_${maxUid})
     async function resolveAndOpenChat(targetUser) {
       const myUid = currentUser.uid;
       const targetUid = targetUser.id || targetUser.uid;
       const targetName = targetUser.displayName || targetUser.name || targetUser.username || 'Contact';
       const targetPhoto = targetUser.photoUrl || targetUser.photo_url || '';
 
-      // Check if existing conversation is already loaded in memory
-      const existing = conversationsList.find(c => {
-        const parts = c.participants || c.users || c.members || c.participantIds || [];
-        return !c.isGroup && parts.includes(targetUid);
-      });
-
-      if (existing) {
-        openConversation(existing.id, targetName, targetPhoto, targetUid);
-        return;
-      }
-
-      // Check Firestore directly
-      try {
-        const query1 = await db.collection('conversations').where('participants', 'array-contains', myUid).get();
-        for (const doc of query1.docs) {
-          const parts = doc.data().participants || [];
-          if (parts.includes(targetUid) && !doc.data().isGroup) {
-            openConversation(doc.id, targetName, targetPhoto, targetUid);
-            return;
-          }
-        }
-      } catch (e) {
-        console.warn("Direct query check:", e);
-      }
-
-      // Create new shared conversation ID
-      const newConvId = 'conv_' + [myUid, targetUid].sort().join('_');
+      const canonicalId = getCanonicalConvId(myUid, targetUid);
       const now = Date.now();
-      const myName = currentUserProfile.displayName || currentUserProfile.name || 'User';
-      const myPhoto = currentUserProfile.photoUrl || '';
+      const myName = (currentUserProfile && (currentUserProfile.displayName || currentUserProfile.name)) || 'User';
+      const myPhoto = (currentUserProfile && currentUserProfile.photoUrl) || '';
 
       const convData = {
-        id: newConvId,
+        id: canonicalId,
         isGroup: false,
         participants: [myUid, targetUid],
         users: [myUid, targetUid],
@@ -1522,13 +1831,40 @@
         createdAt: now
       };
 
-      await db.collection('conversations').doc(newConvId).set(convData, { merge: true }).catch(()=>{});
-      await db.collection('chats').doc(newConvId).set(convData, { merge: true }).catch(()=>{});
+      const docRef = db.collection('conversations').doc(canonicalId);
+      const docSnap = await docRef.get().catch(() => null);
+      if (!docSnap || !docSnap.exists) {
+        await docRef.set(convData, { merge: true }).catch(()=>{});
+      }
 
-      openConversation(newConvId, targetName, targetPhoto, targetUid);
+      openConversation(canonicalId, targetName, targetPhoto, targetUid);
     }
 
-    // 7. REAL CALL SYSTEM (Bidirectional Signaling with Firestore & Web Audio)
+    async function promptNewGroup() {
+      const groupName = prompt("Enter a name for the new Group:");
+      if (!groupName || !groupName.trim()) return;
+      const groupId = 'group_' + Date.now();
+      const now = Date.now();
+      const allUids = [currentUser.uid, ...contactsList.slice(0, 10).map(c => c.id || c.uid)];
+      const convData = {
+        id: groupId,
+        isGroup: true,
+        groupName: groupName.trim(),
+        name: groupName.trim(),
+        participants: allUids,
+        users: allUids,
+        members: allUids,
+        lastMessageText: "Group created",
+        lastMessageTimestamp: now,
+        timestamp: now,
+        createdBy: currentUser.uid,
+        createdAt: now
+      };
+      await db.collection('conversations').doc(groupId).set(convData, { merge: true });
+      openConversation(groupId, groupName.trim(), '', '');
+    }
+
+    // 7. REAL WEBRTC AUDIO & VIDEO CALLING ENGINE (RTCPeerConnection + Firestore SDP/ICE)
     function initAudioContext() {
       if (!audioContext) {
         audioContext = new (window.AudioContext || window.webkitAudioContext)();
@@ -1567,12 +1903,92 @@
         if (ringOscillator1) { ringOscillator1.stop(); ringOscillator1.disconnect(); ringOscillator1 = null; }
         if (ringOscillator2) { ringOscillator2.stop(); ringOscillator2.disconnect(); ringOscillator2 = null; }
         if (ringGainNode) { ringGainNode.disconnect(); ringGainNode = null; }
-      } catch (e) {
-        console.warn("Tone stop:", e);
+      } catch (e) {}
+    }
+
+    function createWebRtcPeerConnection(callId, isCaller, isVideo) {
+      if (peerConnection) {
+        try { peerConnection.close(); } catch (e) {}
+      }
+      peerConnection = new RTCPeerConnection(RTC_CONFIG);
+      remoteStream = new MediaStream();
+      pendingRemoteCandidates = [];
+      isRemoteDescSet = false;
+
+      const remoteVideoEl = document.getElementById('call-remote-video');
+      const remoteAudioEl = document.getElementById('call-remote-audio');
+      if (remoteVideoEl) remoteVideoEl.srcObject = remoteStream;
+      if (remoteAudioEl) remoteAudioEl.srcObject = remoteStream;
+
+      if (localStream) {
+        localStream.getTracks().forEach(track => {
+          peerConnection.addTrack(track, localStream);
+        });
+      }
+
+      peerConnection.ontrack = (event) => {
+        if (event.streams && event.streams[0]) {
+          event.streams[0].getTracks().forEach(track => {
+            remoteStream.addTrack(track);
+          });
+        } else if (event.track) {
+          remoteStream.addTrack(event.track);
+        }
+        if (isVideo && remoteVideoEl) {
+          remoteVideoEl.style.display = 'block';
+          document.getElementById('call-avatar-container').style.display = 'none';
+        }
+      };
+
+      const localCandidatesCol = isCaller ? 'callerCandidates' : 'calleeCandidates';
+      peerConnection.onicecandidate = (event) => {
+        if (event.candidate && callId) {
+          db.collection('calls').doc(callId).collection(localCandidatesCol).add(event.candidate.toJSON()).catch(()=>{});
+        }
+      };
+
+      peerConnection.onconnectionstatechange = () => {
+        if (!peerConnection) return;
+        const st = peerConnection.connectionState;
+        if (st === 'connected') {
+          stopTone();
+          document.getElementById('call-active-status').innerText = "Connected";
+          db.collection('calls').doc(callId).update({ status: 'connected' }).catch(()=>{});
+        } else if (st === 'failed') {
+          db.collection('calls').doc(callId).update({ status: 'failed', failureReason: 'ICE connection failed' }).catch(()=>{});
+        }
+      };
+
+      // Listen for remote ICE candidates
+      const remoteCandidatesCol = isCaller ? 'calleeCandidates' : 'callerCandidates';
+      if (remoteCandidatesUnsubscribe) remoteCandidatesUnsubscribe();
+      remoteCandidatesUnsubscribe = db.collection('calls').doc(callId).collection(remoteCandidatesCol)
+        .onSnapshot(snap => {
+          snap.docChanges().forEach(async change => {
+            if (change.type === 'added') {
+              const candData = change.doc.data();
+              if (!candData || !candData.candidate) return;
+              if (peerConnection && isRemoteDescSet) {
+                try { await peerConnection.addIceCandidate(new RTCIceCandidate(candData)); } catch (e) {}
+              } else {
+                pendingRemoteCandidates.push(candData);
+              }
+            }
+          });
+        });
+
+      return peerConnection;
+    }
+
+    async function flushPendingRemoteCandidates() {
+      if (!peerConnection || !isRemoteDescSet) return;
+      while (pendingRemoteCandidates.length > 0) {
+        const c = pendingRemoteCandidates.shift();
+        try { await peerConnection.addIceCandidate(new RTCIceCandidate(c)); } catch (e) {}
       }
     }
 
-    // Start outgoing call
+    // Start outgoing call with real WebRTC SDP Offer
     async function startCall(isVideo) {
       if (!activeRecipient || !activeRecipient.id) {
         alert("Please select a contact to call.");
@@ -1581,61 +1997,98 @@
 
       initAudioContext();
 
-      // Acquire mic and optional camera
       try {
         localStream = await navigator.mediaDevices.getUserMedia({
-          audio: true,
-          video: isVideo
+          audio: { echoCancellation: true, noiseSuppression: true },
+          video: isVideo ? { facingMode: currentCameraFacingMode, width: { ideal: 640 }, height: { ideal: 480 } } : false
         });
       } catch (err) {
-        console.warn("Media devices notice:", err);
-        // Fallback to audio only if video device fails
         try {
-          localStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+          localStream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
         } catch (e) {
-          console.warn("Audio only failed:", e);
+          alert("Microphone permission is required to make a call.");
+          return;
         }
       }
 
       currentCallId = 'call_' + Date.now() + '_' + Math.random().toString(36).substring(2, 8);
-      const myName = currentUserProfile.displayName || currentUserProfile.name || 'User';
-      const myPhoto = currentUserProfile.photoUrl || '';
+      const myName = (currentUserProfile && (currentUserProfile.displayName || currentUserProfile.name)) || 'User';
+      const myPhoto = (currentUserProfile && currentUserProfile.photoUrl) || '';
 
+      const pc = createWebRtcPeerConnection(currentCallId, true, isVideo);
+      const offer = await pc.createOffer({ offerToReceiveAudio: true, offerToReceiveVideo: !!isVideo });
+      await pc.setLocalDescription(offer);
+
+      const now = Date.now();
       const callData = {
         id: currentCallId,
+        callId: currentCallId,
         callerId: currentUser.uid,
+        callerUid: currentUser.uid,
         callerName: myName,
         callerPhotoUrl: myPhoto,
         receiverId: activeRecipient.id,
+        receiverUid: activeRecipient.id,
         receiverName: activeRecipient.name,
         receiverPhotoUrl: activeRecipient.photo || '',
         isVideo: !!isVideo,
+        callType: isVideo ? 'video' : 'audio',
+        platform: 'web',
         status: 'ringing',
-        timestamp: Date.now(),
+        timestamp: now,
+        createdAt: now,
         durationSeconds: 0,
-        channelName: 'channel_' + currentCallId
+        channelName: 'channel_' + currentCallId,
+        offer: { type: offer.type, sdp: offer.sdp }
       };
 
       await db.collection('calls').doc(currentCallId).set(callData);
 
-      // Open active call screen
-      showActiveCallUI(activeRecipient.name, activeRecipient.photo, isVideo, "Calling / Ringing...");
-      playTone(440, 480); // US standard ringback tone
+      showActiveCallUI(activeRecipient.name, activeRecipient.photo, isVideo, "Ringing...");
+      playTone(440, 480);
 
-      // Listen for recipient response
+      // 45-second unanswered timeout
+      if (callRingTimeout) clearTimeout(callRingTimeout);
+      callRingTimeout = setTimeout(async () => {
+        if (currentCallId) {
+          const snap = await db.collection('calls').doc(currentCallId).get().catch(() => null);
+          if (snap && snap.exists && snap.data().status === 'ringing') {
+            await db.collection('calls').doc(currentCallId).update({
+              status: 'timeout',
+              endedAt: Date.now(),
+              failureReason: 'No answer within 45 seconds'
+            }).catch(()=>{});
+          }
+        }
+      }, 45000);
+
       if (activeCallDocListener) activeCallDocListener();
-      activeCallDocListener = db.collection('calls').doc(currentCallId).onSnapshot(doc => {
+      activeCallDocListener = db.collection('calls').doc(currentCallId).onSnapshot(async doc => {
         if (!doc.exists) return;
         const data = doc.data();
-        if (data.status === 'accepted') {
+        if (data.answer && peerConnection && !isRemoteDescSet) {
+          try {
+            await peerConnection.setRemoteDescription(new RTCSessionDescription(data.answer));
+            isRemoteDescSet = true;
+            await flushPendingRemoteCandidates();
+          } catch (e) {
+            console.warn("setRemoteDescription answer error:", e);
+          }
+        }
+        if (data.status === 'accepted' || data.status === 'connected') {
           stopTone();
+          if (callRingTimeout) { clearTimeout(callRingTimeout); callRingTimeout = null; }
           document.getElementById('call-active-status').innerText = "Connected";
-          startCallTimer();
+          if (!callTimerInterval) startCallTimer();
         } else if (data.status === 'rejected') {
           stopTone();
           document.getElementById('call-active-status').innerText = "Call Declined";
           setTimeout(cleanupCallState, 1500);
-        } else if (data.status === 'ended') {
+        } else if (data.status === 'timeout' || data.status === 'missed') {
+          stopTone();
+          document.getElementById('call-active-status').innerText = "No Answer";
+          setTimeout(cleanupCallState, 1500);
+        } else if (data.status === 'ended' || data.status === 'cancelled' || data.status === 'failed') {
           stopTone();
           document.getElementById('call-active-status').innerText = "Call Ended";
           setTimeout(cleanupCallState, 1200);
@@ -1655,8 +2108,14 @@
         .onSnapshot(snap => {
           if (!snap.empty) {
             const doc = snap.docs[0];
-            pendingIncomingCall = { id: doc.id, ...doc.data() };
-            showIncomingCallDialog(pendingIncomingCall);
+            const data = doc.data();
+            const ageMs = Date.now() - getTimestampMillis(data.timestamp || data.createdAt);
+            if (ageMs < 60000) {
+              pendingIncomingCall = { id: doc.id, ...data };
+              showIncomingCallDialog(pendingIncomingCall);
+            } else {
+              hideIncomingCallDialog();
+            }
           } else {
             hideIncomingCallDialog();
           }
@@ -1675,7 +2134,7 @@
       }
 
       document.getElementById('incoming-call-modal').style.display = 'flex';
-      playTone(523, 659); // Melodic chime
+      playTone(523, 659);
       lucide.createIcons();
     }
 
@@ -1687,29 +2146,69 @@
     async function acceptIncomingCall() {
       if (!pendingIncomingCall) return;
       const call = pendingIncomingCall;
+      pendingIncomingCall = null;
       hideIncomingCallDialog();
 
-      currentCallId = call.id;
+      // Verify call is still ringing (prevent accepting twice)
+      const freshSnap = await db.collection('calls').doc(call.id).get().catch(() => null);
+      if (!freshSnap || !freshSnap.exists || freshSnap.data().status !== 'ringing') {
+        alert("Call is no longer active.");
+        return;
+      }
+      const freshCall = { id: freshSnap.id, ...freshSnap.data() };
+      currentCallId = freshCall.id;
 
       try {
         localStream = await navigator.mediaDevices.getUserMedia({
-          audio: true,
-          video: call.isVideo
+          audio: { echoCancellation: true, noiseSuppression: true },
+          video: freshCall.isVideo ? { facingMode: currentCameraFacingMode, width: { ideal: 640 }, height: { ideal: 480 } } : false
         });
       } catch (e) {
-        try { localStream = await navigator.mediaDevices.getUserMedia({ audio: true }); } catch (err) {}
+        try { localStream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false }); } catch (err) {}
       }
 
-      await db.collection('calls').doc(call.id).update({ status: 'accepted' });
+      showActiveCallUI(freshCall.callerName, freshCall.callerPhotoUrl, freshCall.isVideo, "Connecting...");
 
-      showActiveCallUI(call.callerName, call.callerPhotoUrl, call.isVideo, "Connected");
+      const pc = createWebRtcPeerConnection(freshCall.id, false, freshCall.isVideo);
+
+      if (freshCall.offer && freshCall.offer.sdp) {
+        await pc.setRemoteDescription(new RTCSessionDescription(freshCall.offer));
+        isRemoteDescSet = true;
+        await flushPendingRemoteCandidates();
+        const answer = await pc.createAnswer();
+        await pc.setLocalDescription(answer);
+        await db.collection('calls').doc(freshCall.id).update({
+          status: 'accepted',
+          acceptedAt: Date.now(),
+          answer: { type: answer.type, sdp: answer.sdp }
+        });
+      } else {
+        await db.collection('calls').doc(freshCall.id).update({
+          status: 'accepted',
+          acceptedAt: Date.now()
+        });
+      }
+
       startCallTimer();
 
       if (activeCallDocListener) activeCallDocListener();
-      activeCallDocListener = db.collection('calls').doc(call.id).onSnapshot(doc => {
+      activeCallDocListener = db.collection('calls').doc(freshCall.id).onSnapshot(async doc => {
         if (!doc.exists) return;
         const data = doc.data();
-        if (data.status === 'ended') {
+        if (data.offer && data.offer.sdp && peerConnection && !isRemoteDescSet) {
+          try {
+            await peerConnection.setRemoteDescription(new RTCSessionDescription(data.offer));
+            isRemoteDescSet = true;
+            await flushPendingRemoteCandidates();
+            const answer = await peerConnection.createAnswer();
+            await peerConnection.setLocalDescription(answer);
+            await db.collection('calls').doc(freshCall.id).update({
+              answer: { type: answer.type, sdp: answer.sdp },
+              status: 'connected'
+            });
+          } catch (e) {}
+        }
+        if (data.status === 'ended' || data.status === 'cancelled' || data.status === 'rejected' || data.status === 'failed') {
           document.getElementById('call-active-status').innerText = "Call Ended";
           setTimeout(cleanupCallState, 1200);
         }
@@ -1719,9 +2218,12 @@
     async function declineIncomingCall() {
       if (!pendingIncomingCall) return;
       const callId = pendingIncomingCall.id;
-      hideIncomingCallDialog();
-      await db.collection('calls').doc(callId).update({ status: 'rejected' }).catch(()=>{});
       pendingIncomingCall = null;
+      hideIncomingCallDialog();
+      await db.collection('calls').doc(callId).update({
+        status: 'rejected',
+        endedAt: Date.now()
+      }).catch(()=>{});
     }
 
     function showActiveCallUI(name, photo, isVideo, initialStatus) {
@@ -1729,6 +2231,7 @@
       document.getElementById('call-active-type').innerText = isVideo ? 'HD Video Call' : 'Voice Call';
       document.getElementById('call-active-status').innerText = initialStatus;
       document.getElementById('call-active-timer').style.display = 'none';
+      document.getElementById('call-avatar-container').style.display = 'block';
 
       const avatarEl = document.getElementById('call-active-avatar');
       if (photo) {
@@ -1738,7 +2241,9 @@
       }
 
       document.getElementById('btn-call-cam').style.display = isVideo ? 'flex' : 'none';
+      document.getElementById('btn-call-switch-cam').style.display = isVideo ? 'flex' : 'none';
       document.getElementById('call-local-video').style.display = isVideo ? 'block' : 'none';
+      document.getElementById('call-remote-video').style.display = isVideo ? 'block' : 'none';
 
       if (isVideo && localStream) {
         document.getElementById('call-local-video').srcObject = localStream;
@@ -1766,9 +2271,12 @@
     async function endCurrentCall() {
       stopTone();
       if (currentCallId) {
+        const finalStatus = callSeconds > 0 ? 'ended' : 'cancelled';
         await db.collection('calls').doc(currentCallId).update({
-          status: 'ended',
-          durationSeconds: callSeconds
+          status: finalStatus,
+          endedAt: Date.now(),
+          durationSeconds: callSeconds,
+          duration: callSeconds
         }).catch(()=>{});
       }
       cleanupCallState();
@@ -1776,15 +2284,29 @@
 
     function cleanupCallState() {
       stopTone();
+      if (callRingTimeout) { clearTimeout(callRingTimeout); callRingTimeout = null; }
       if (callTimerInterval) { clearInterval(callTimerInterval); callTimerInterval = null; }
       if (activeCallDocListener) { activeCallDocListener(); activeCallDocListener = null; }
+      if (remoteCandidatesUnsubscribe) { remoteCandidatesUnsubscribe(); remoteCandidatesUnsubscribe = null; }
       if (localStream) {
         localStream.getTracks().forEach(t => t.stop());
         localStream = null;
       }
+      if (peerConnection) {
+        try { peerConnection.close(); } catch (e) {}
+        peerConnection = null;
+      }
+      const rv = document.getElementById('call-remote-video');
+      const lv = document.getElementById('call-local-video');
+      const ra = document.getElementById('call-remote-audio');
+      if (rv) { rv.srcObject = null; rv.style.display = 'none'; }
+      if (lv) { lv.srcObject = null; lv.style.display = 'none'; }
+      if (ra) { ra.srcObject = null; }
       document.getElementById('active-call-modal').style.display = 'none';
       currentCallId = null;
       callSeconds = 0;
+      isRemoteDescSet = false;
+      pendingRemoteCandidates = [];
       if (currentTab === 'calls') loadCallHistory();
     }
 
@@ -1811,6 +2333,34 @@
         btn.classList.toggle('active', isCameraOff);
         btn.innerHTML = `<i data-lucide="${isCameraOff ? 'video-off' : 'video'}" style="width:24px;height:24px;"></i>`;
         lucide.createIcons();
+      }
+    }
+
+    async function switchCallCamera() {
+      if (!localStream) return;
+      try {
+        currentCameraFacingMode = (currentCameraFacingMode === 'user') ? 'environment' : 'user';
+        const newStream = await navigator.mediaDevices.getUserMedia({
+          video: { facingMode: currentCameraFacingMode, width: { ideal: 640 }, height: { ideal: 480 } },
+          audio: false
+        });
+        const newVideoTrack = newStream.getVideoTracks()[0];
+        if (newVideoTrack && peerConnection) {
+          const sender = peerConnection.getSenders().find(s => s.track && s.track.kind === 'video');
+          if (sender) await sender.replaceTrack(newVideoTrack);
+        }
+        localStream.getVideoTracks().forEach(t => {
+          t.stop();
+          localStream.removeTrack(t);
+        });
+        if (newVideoTrack) localStream.addTrack(newVideoTrack);
+        const lv = document.getElementById('call-local-video');
+        if (lv) {
+          lv.srcObject = localStream;
+          lv.style.transform = (currentCameraFacingMode === 'user') ? 'scaleX(-1)' : 'none';
+        }
+      } catch (e) {
+        console.warn("Camera switch error:", e);
       }
     }
 

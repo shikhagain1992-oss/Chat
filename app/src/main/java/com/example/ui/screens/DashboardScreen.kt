@@ -253,6 +253,7 @@ fun DashboardScreen(
                 )
                 2 -> CallsTab(
                     currentUserId = currentUserId,
+                    currentUserProfile = currentUserProfile,
                     callRepo = callRepo,
                     onNavigateToUserSearch = onNavigateToUserSearch,
                     onNavigateToCallScreen = onNavigateToCallScreen
@@ -263,6 +264,7 @@ fun DashboardScreen(
                     onLogout = {
                         scope.launch {
                             userRepo.setUserOnline(false)
+                            ChatRepository.clearSessionCache()
                             FirebaseManager.auth.signOut()
                             onLogout()
                         }
@@ -278,16 +280,22 @@ fun DashboardScreen(
                         onAccept = {
                             val stopIntent = Intent(context, NexChatCallService::class.java).apply {
                                 action = NexChatCallService.ACTION_ACCEPT_CALL
+                                putExtra(NexChatCallService.EXTRA_CALL_ID, call.id)
                             }
                             context.startService(stopIntent)
                             scope.launch {
-                                callRepo.updateCallStatus(call.id, "accepted")
-                                onNavigateToCallScreen(call.id, false, call.isVideo)
+                                val res = callRepo.acceptCallSafely(call.id)
+                                if (res.isSuccess) {
+                                    onNavigateToCallScreen(call.id, false, call.isVideo)
+                                } else {
+                                    Toast.makeText(context, "Call is no longer active", Toast.LENGTH_SHORT).show()
+                                }
                             }
                         },
                         onDecline = {
                             val stopIntent = Intent(context, NexChatCallService::class.java).apply {
                                 action = NexChatCallService.ACTION_END_CALL
+                                putExtra(NexChatCallService.EXTRA_CALL_ID, call.id)
                             }
                             context.startService(stopIntent)
                             scope.launch {
@@ -701,12 +709,41 @@ fun StatusTab(
 @Composable
 fun CallsTab(
     currentUserId: String,
+    currentUserProfile: UserProfile?,
     callRepo: CallRepository,
     onNavigateToUserSearch: () -> Unit,
     onNavigateToCallScreen: (String, Boolean, Boolean) -> Unit
 ) {
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
     val callLogs by callRepo.getCallHistoryFlow(currentUserId)
         .collectAsState(initial = emptyList())
+
+    val startRedial: (CallRecord) -> Unit = { prevCall ->
+        val isOutgoing = prevCall.callerId == currentUserId
+        val targetUid = if (isOutgoing) prevCall.receiverId else prevCall.callerId
+        val targetName = if (isOutgoing) prevCall.receiverName else prevCall.callerName
+        val targetPhoto = if (isOutgoing) prevCall.receiverPhotoUrl else prevCall.callerPhotoUrl
+        val callerProfile = currentUserProfile ?: UserProfile(
+            uid = currentUserId,
+            displayName = FirebaseManager.auth.currentUser?.displayName ?: "User"
+        )
+        val receiverProfile = UserProfile(
+            uid = targetUid,
+            displayName = targetName,
+            photoUrl = targetPhoto
+        )
+        if (targetUid.isNotBlank() && targetUid != currentUserId) {
+            scope.launch {
+                val res = callRepo.startCall(callerProfile, receiverProfile, prevCall.isVideo)
+                if (res.isSuccess) {
+                    onNavigateToCallScreen(res.getOrNull()!!.id, true, prevCall.isVideo)
+                } else {
+                    Toast.makeText(context, "Could not start call", Toast.LENGTH_SHORT).show()
+                }
+            }
+        }
+    }
 
     Scaffold(
         floatingActionButton = {
@@ -761,15 +798,13 @@ fun CallsTab(
                         val isOutgoing = call.callerId == currentUserId
                         val contactName = if (isOutgoing) call.receiverName else call.callerName
                         val contactPhoto = if (isOutgoing) call.receiverPhotoUrl else call.callerPhotoUrl
-                        val isMissed = call.status == "missed" || call.status == "rejected"
+                        val isMissed = call.status == "missed" || call.status == "rejected" || call.status == "timeout"
                         val timeStr = SimpleDateFormat("MMM d, HH:mm", Locale.getDefault()).format(Date(call.timestamp))
 
                         Row(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .clickable {
-                                    onNavigateToCallScreen(call.id, true, call.isVideo)
-                                }
+                                .clickable { startRedial(call) }
                                 .padding(vertical = 10.dp)
                                 .testTag("call_item_${call.id}"),
                             verticalAlignment = Alignment.CenterVertically
@@ -805,11 +840,7 @@ fun CallsTab(
                                 }
                             }
 
-                            IconButton(
-                                onClick = {
-                                    onNavigateToCallScreen(call.id, true, call.isVideo)
-                                }
-                            ) {
+                            IconButton(onClick = { startRedial(call) }) {
                                 Icon(
                                     imageVector = if (call.isVideo) Icons.Default.Videocam else Icons.Default.Call,
                                     contentDescription = "Call back",
@@ -831,8 +862,10 @@ fun SettingsTab(
     onLogout: () -> Unit
 ) {
     val context = LocalContext.current
-    var notificationsEnabled by remember { mutableStateOf(true) }
-    var readReceiptsEnabled by remember { mutableStateOf(true) }
+    val prefs = remember { context.getSharedPreferences("nexchat_prefs", Context.MODE_PRIVATE) }
+    var notificationsEnabled by remember { mutableStateOf(prefs.getBoolean("notifications_enabled", true)) }
+    var readReceiptsEnabled by remember { mutableStateOf(prefs.getBoolean("read_receipts", true)) }
+    var darkModeEnabled by remember { mutableStateOf(com.example.ui.theme.ThemeState.isDarkMode.value) }
     var showLogoutDialog by remember { mutableStateOf(false) }
 
     LazyColumn(
@@ -899,8 +932,36 @@ fun SettingsTab(
         // Settings items
         item {
             Spacer(modifier = Modifier.height(12.dp))
-            Text("Preferences", fontSize = 14.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text("Preferences & Privacy", fontSize = 14.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurfaceVariant)
             Spacer(modifier = Modifier.height(8.dp))
+
+            // Dark / Light Mode switch
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(vertical = 8.dp),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(
+                        imageVector = if (darkModeEnabled) Icons.Default.DarkMode else Icons.Default.LightMode,
+                        contentDescription = null,
+                        tint = PrimaryBlue
+                    )
+                    Spacer(modifier = Modifier.width(14.dp))
+                    Text("Dark Mode Theme", fontSize = 16.sp)
+                }
+                Switch(
+                    checked = darkModeEnabled,
+                    onCheckedChange = {
+                        darkModeEnabled = it
+                        com.example.ui.theme.ThemeState.isDarkMode.value = it
+                        prefs.edit().putBoolean("dark_mode", it).apply()
+                    },
+                    modifier = Modifier.testTag("dark_mode_switch")
+                )
+            }
 
             // Notifications switch
             Row(
@@ -915,7 +976,13 @@ fun SettingsTab(
                     Spacer(modifier = Modifier.width(14.dp))
                     Text("Chat & Call Notifications", fontSize = 16.sp)
                 }
-                Switch(checked = notificationsEnabled, onCheckedChange = { notificationsEnabled = it })
+                Switch(
+                    checked = notificationsEnabled,
+                    onCheckedChange = {
+                        notificationsEnabled = it
+                        prefs.edit().putBoolean("notifications_enabled", it).apply()
+                    }
+                )
             }
 
             // Read receipts switch
@@ -931,7 +998,32 @@ fun SettingsTab(
                     Spacer(modifier = Modifier.width(14.dp))
                     Text("Read Receipts (Double Blue Ticks)", fontSize = 16.sp)
                 }
-                Switch(checked = readReceiptsEnabled, onCheckedChange = { readReceiptsEnabled = it })
+                Switch(
+                    checked = readReceiptsEnabled,
+                    onCheckedChange = {
+                        readReceiptsEnabled = it
+                        prefs.edit().putBoolean("read_receipts", it).apply()
+                    }
+                )
+            }
+
+            // Email Verification / Security Action
+            TextButton(
+                onClick = {
+                    val user = FirebaseManager.auth.currentUser
+                    if (user != null) {
+                        user.sendEmailVerification()
+                            .addOnSuccessListener {
+                                Toast.makeText(context, "Verification link sent to ${user.email}", Toast.LENGTH_LONG).show()
+                            }
+                            .addOnFailureListener { e ->
+                                Toast.makeText(context, e.localizedMessage ?: "Verification email already sent", Toast.LENGTH_SHORT).show()
+                            }
+                    }
+                },
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Text("Verify Account Email (${currentUser?.email ?: FirebaseManager.auth.currentUser?.email ?: ""})", color = PrimaryBlue)
             }
 
             // Battery Optimization & Always Allow Permissions

@@ -103,25 +103,26 @@ jobs:
           KEY_PASSWORD: "android"
         run: |
           if [ -x ./gradlew ]; then
-            ./gradlew :app:bundleRelease :app:assembleRelease --no-daemon --stacktrace || echo "Release build warning handled"
+            ./gradlew :app:bundleRelease :app:assembleRelease --no-daemon --stacktrace
           else
-            gradle :app:bundleRelease :app:assembleRelease --no-daemon --stacktrace || echo "Release build warning handled"
+            gradle :app:bundleRelease :app:assembleRelease --no-daemon --stacktrace
           fi
 
-      - name: Upload Debug APK
+      - name: Upload Installable Debug APK (Recommended for Direct Phone Install)
         uses: actions/upload-artifact@v4
         with:
           name: NexChat-Pro-Debug-APK
           path: app/build/outputs/apk/debug/*.apk
+          if-no-files-found: error
           retention-days: 14
 
-      - name: Upload Release Artifacts
+      - name: Upload Signed Release APK & Play Store AAB Bundle
         uses: actions/upload-artifact@v4
-        if: always()
         with:
           name: NexChat-Pro-Release-Artifacts
           path: |
-            app/build/outputs/bundle/release/*.aab
             app/build/outputs/apk/release/*.apk
+            app/build/outputs/bundle/release/*.aab
+          if-no-files-found: error
           retention-days: 14
 

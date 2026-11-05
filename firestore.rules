@@ -1,40 +1,126 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
-    
-    // User Profiles: Public read for authenticated users, write only for owner
+
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isConversationParticipant(convData, convId) {
+      return isSignedIn() && (
+        (convData != null && convData.participants is list && request.auth.uid in convData.participants) ||
+        (convData != null && convData.isGroup == true) ||
+        convId.matches('.*' + request.auth.uid + '.*')
+      );
+    }
+
+    // 1. User Profiles: Authenticated users can read directory profiles; only the owner can create/update/delete their own profile
     match /users/{userId} {
-      allow read: if request.auth != null;
-      allow write: if request.auth != null && request.auth.uid == userId;
+      allow read: if isSignedIn();
+      allow create, update, delete: if isSignedIn() && request.auth.uid == userId;
     }
-    
-    // Conversations & Chats: Multi-version support for chats & conversations
+
+    // 2. Canonical Conversations & Messages
     match /conversations/{conversationId} {
-      allow read, write: if request.auth != null;
+      allow read: if isSignedIn() && (
+        resource == null ||
+        isConversationParticipant(resource.data, conversationId)
+      );
+      allow create: if isSignedIn() && (
+        isConversationParticipant(request.resource.data, conversationId)
+      );
+      allow update: if isSignedIn() && (
+        isConversationParticipant(resource.data, conversationId) ||
+        isConversationParticipant(request.resource.data, conversationId)
+      );
+      allow delete: if isSignedIn() && isConversationParticipant(resource.data, conversationId);
 
       match /messages/{messageId} {
-        allow read, write: if request.auth != null;
+        allow read: if isSignedIn() && (
+          conversationId.matches('.*' + request.auth.uid + '.*') ||
+          request.auth.uid in get(/databases/$(database)/documents/conversations/$(conversationId)).data.participants ||
+          get(/databases/$(database)/documents/conversations/$(conversationId)).data.isGroup == true
+        );
+        allow create: if isSignedIn()
+          && request.resource.data.senderId == request.auth.uid;
+        allow update: if isSignedIn() && (
+          resource.data.senderId == request.auth.uid ||
+          conversationId.matches('.*' + request.auth.uid + '.*') ||
+          request.auth.uid in get(/databases/$(database)/documents/conversations/$(conversationId)).data.participants
+        );
+        allow delete: if isSignedIn() && resource.data.senderId == request.auth.uid;
       }
     }
 
+    // 3. Legacy Chats fallback collection (restricted to participants & message sender)
     match /chats/{chatId} {
-      allow read, write: if request.auth != null;
+      allow read: if isSignedIn() && (
+        resource == null ||
+        isConversationParticipant(resource.data, chatId)
+      );
+      allow create, update: if isSignedIn() && (
+        isConversationParticipant(request.resource.data, chatId) ||
+        (resource != null && isConversationParticipant(resource.data, chatId))
+      );
+      allow delete: if isSignedIn() && isConversationParticipant(resource.data, chatId);
 
       match /messages/{messageId} {
-        allow read, write: if request.auth != null;
+        allow read: if isSignedIn() && (
+          chatId.matches('.*' + request.auth.uid + '.*') ||
+          request.auth.uid in get(/databases/$(database)/documents/chats/$(chatId)).data.participants
+        );
+        allow create: if isSignedIn() && request.resource.data.senderId == request.auth.uid;
+        allow update: if isSignedIn() && (
+          resource.data.senderId == request.auth.uid ||
+          chatId.matches('.*' + request.auth.uid + '.*') ||
+          request.auth.uid in get(/databases/$(database)/documents/chats/$(chatId)).data.participants
+        );
+        allow delete: if isSignedIn() && resource.data.senderId == request.auth.uid;
       }
     }
-    
-    // Statuses: 24h stories
+
+    // 4. Statuses / 24h Stories: Authenticated read, owner create, authenticated viewer update, owner delete
     match /statuses/{statusId} {
-      allow read, create: if request.auth != null;
-      allow update: if request.auth != null;
-      allow delete: if request.auth != null && resource.data.userId == request.auth.uid;
+      allow read: if isSignedIn();
+      allow create: if isSignedIn() && request.resource.data.userId == request.auth.uid;
+      allow update: if isSignedIn() && (
+        resource.data.userId == request.auth.uid ||
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['viewerIds'])
+      );
+      allow delete: if isSignedIn() && resource.data.userId == request.auth.uid;
     }
-    
-    // Voice & Video Calls Signaling
+
+    // 5. Voice & Video Calls Signaling (restricted strictly to caller and receiver)
     match /calls/{callId} {
-      allow read, create, update: if request.auth != null;
+      allow read: if isSignedIn() && (
+        resource == null ||
+        resource.data.callerId == request.auth.uid ||
+        resource.data.receiverId == request.auth.uid ||
+        resource.data.callerUid == request.auth.uid ||
+        resource.data.receiverUid == request.auth.uid
+      );
+      allow create: if isSignedIn() && (
+        request.resource.data.callerId == request.auth.uid ||
+        request.resource.data.callerUid == request.auth.uid
+      );
+      allow update: if isSignedIn() && (
+        resource.data.callerId == request.auth.uid ||
+        resource.data.receiverId == request.auth.uid ||
+        resource.data.callerUid == request.auth.uid ||
+        resource.data.receiverUid == request.auth.uid
+      );
+      allow delete: if isSignedIn() && (
+        resource.data.callerId == request.auth.uid ||
+        resource.data.receiverId == request.auth.uid
+      );
+
+      // WebRTC ICE Candidate subcollections
+      match /callerCandidates/{candidateId} {
+        allow read, write: if isSignedIn();
+      }
+      match /calleeCandidates/{candidateId} {
+        allow read, write: if isSignedIn();
+      }
     }
   }
 }
