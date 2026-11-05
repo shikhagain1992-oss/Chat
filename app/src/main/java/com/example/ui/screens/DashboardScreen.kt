@@ -132,7 +132,8 @@ fun DashboardScreen(
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     var selectedTab by remember { mutableIntStateOf(0) }
-    val currentUserId = FirebaseManager.currentUserId ?: ""
+    val authUser by FirebaseManager.authStateFlow.collectAsState(initial = FirebaseManager.currentUser)
+    val currentUserId = authUser?.uid ?: FirebaseManager.currentUserId ?: ""
 
     val userRepo = remember { UserRepository() }
     val chatRepo = remember { ChatRepository() }
@@ -430,7 +431,11 @@ fun ChatsTab(
                             conversation = conv,
                             currentUserId = currentUserId,
                             onClick = {
-                                val otherId = conv.participants.firstOrNull { it != currentUserId } ?: "none"
+                                val otherId = conv.participants.firstOrNull { it != currentUserId && it.isNotBlank() }
+                                    ?: if (conv.id.contains("_")) {
+                                        val parts = conv.id.split("_")
+                                        if (parts.size == 2) if (parts[0] == currentUserId) parts[1] else parts[0] else "none"
+                                    } else "none"
                                 onNavigateToChatDetail(conv.id, otherId, conv.isGroup)
                             }
                         )
@@ -452,13 +457,23 @@ fun ConversationItem(
     onClick: () -> Unit
 ) {
     val isGroup = conversation.isGroup
-    val otherUserId = conversation.participants.firstOrNull { it != currentUserId } ?: ""
+    val otherUserId = conversation.participants.firstOrNull { it != currentUserId && it.isNotBlank() }
+        ?: if (conversation.id.contains("_")) {
+            val parts = conversation.id.split("_")
+            if (parts.size == 2) if (parts[0] == currentUserId) parts[1] else parts[0] else ""
+        } else ""
+
+    val userRepo = remember { UserRepository() }
+    val dynamicOtherUser by userRepo.getUserProfile(otherUserId).collectAsState(initial = null)
+
     val title = if (isGroup) {
         conversation.groupName.ifBlank { "Group" }
     } else {
-        conversation.participantNames[otherUserId]?.ifBlank { "Contact" } ?: "Contact"
+        dynamicOtherUser?.displayName?.ifBlank { dynamicOtherUser?.username }
+            ?: conversation.participantNames[otherUserId]?.ifBlank { "Contact" }
+            ?: "Contact"
     }
-    val photo = if (isGroup) conversation.groupPhotoUrl else conversation.participantPhotos[otherUserId]
+    val photo = if (isGroup) conversation.groupPhotoUrl else (dynamicOtherUser?.photoUrl ?: conversation.participantPhotos[otherUserId])
     val timeFormatted = remember(conversation.lastMessageTimestamp) {
         val sdf = SimpleDateFormat("HH:mm", Locale.getDefault())
         sdf.format(Date(conversation.lastMessageTimestamp))
@@ -919,20 +934,29 @@ fun SettingsTab(
                 Switch(checked = readReceiptsEnabled, onCheckedChange = { readReceiptsEnabled = it })
             }
 
-            // Battery Optimization / Background execution
+            // Battery Optimization & Always Allow Permissions
             Card(
                 modifier = Modifier
                     .fillMaxWidth()
                     .clickable {
                         try {
-                            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-                                val intent = Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS).apply {
-                                    data = Uri.parse("package:${context.packageName}")
-                                }
-                                context.startActivity(intent)
+                            // First open direct app details settings so user can set "Allow all the time"
+                            val intent = Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS).apply {
+                                data = Uri.parse("package:${context.packageName}")
                             }
+                            context.startActivity(intent)
+                            Toast.makeText(context, "Select 'Permissions' and 'Battery' -> Choose 'Unrestricted' / 'Allow all the time'", Toast.LENGTH_LONG).show()
                         } catch (e: Exception) {
-                            Toast.makeText(context, "Battery optimization screen not accessible", Toast.LENGTH_SHORT).show()
+                            try {
+                                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                                    val bIntent = Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS).apply {
+                                        data = Uri.parse("package:${context.packageName}")
+                                    }
+                                    context.startActivity(bIntent)
+                                }
+                            } catch (e2: Exception) {
+                                Toast.makeText(context, "Could not open settings", Toast.LENGTH_SHORT).show()
+                            }
                         }
                     }
                     .padding(vertical = 8.dp),
@@ -946,8 +970,8 @@ fun SettingsTab(
                     Icon(Icons.Default.BatteryChargingFull, contentDescription = null, tint = OnlineGreen)
                     Spacer(modifier = Modifier.width(14.dp))
                     Column(modifier = Modifier.weight(1f)) {
-                        Text("Allow 24/7 Background Execution", fontWeight = FontWeight.SemiBold, fontSize = 15.sp)
-                        Text("Ensure incoming calls & messages wake up phone", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Text("Always Allow & Background Calls", fontWeight = FontWeight.SemiBold, fontSize = 15.sp)
+                        Text("Tap to set Battery to 'Unrestricted' and allow 24/7 incoming calls even when phone is locked", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
                 }
             }

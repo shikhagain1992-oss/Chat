@@ -143,11 +143,22 @@ fun ChatDetailScreen(
     val callRepo = remember { CallRepository() }
 
     val currentUserProfile by userRepo.getUserProfile(currentUserId).collectAsState(initial = null)
-    val otherUser by userRepo.getUserProfile(otherUserId).collectAsState(initial = null)
 
-    val canonicalFallbackId = remember(currentUserId, otherUserId) {
-        if (currentUserId.isNotBlank() && otherUserId.isNotBlank() && otherUserId != "none") {
-            if (currentUserId < otherUserId) "${currentUserId}_${otherUserId}" else "${otherUserId}_${currentUserId}"
+    val effectiveOtherId = remember(otherUserId, conversationId, currentUserId) {
+        if (otherUserId.isNotBlank() && otherUserId != "none") otherUserId
+        else if (conversationId.contains("_")) {
+            val parts = conversationId.split("_")
+            if (parts.size == 2) {
+                if (parts[0] == currentUserId) parts[1] else parts[0]
+            } else ""
+        } else ""
+    }
+
+    val otherUser by userRepo.getUserProfile(effectiveOtherId).collectAsState(initial = null)
+
+    val canonicalFallbackId = remember(currentUserId, effectiveOtherId) {
+        if (currentUserId.isNotBlank() && effectiveOtherId.isNotBlank() && effectiveOtherId != "none") {
+            if (currentUserId < effectiveOtherId) "${currentUserId}_${effectiveOtherId}" else "${effectiveOtherId}_${currentUserId}"
         } else ""
     }
 
@@ -166,9 +177,9 @@ fun ChatDetailScreen(
     }
 
     // Auto-resolve / verify existing conversation ID in background
-    LaunchedEffect(conversationId, otherUserId) {
-        if (otherUserId.isNotBlank() && otherUserId != "none") {
-            val targetUser = otherUser ?: UserProfile(uid = otherUserId)
+    LaunchedEffect(conversationId, effectiveOtherId) {
+        if (effectiveOtherId.isNotBlank() && effectiveOtherId != "none") {
+            val targetUser = otherUser ?: UserProfile(uid = effectiveOtherId)
             val res = chatRepo.getOrCreateOneToOneConversation(activeSender, targetUser)
             if (res.isSuccess) {
                 val resolved = res.getOrNull()
@@ -225,31 +236,37 @@ fun ChatDetailScreen(
         }
     }
 
-    // Media Picker launcher
+    // Media Picker launcher with crash-proof try/catch
     val mediaPickerLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.PickVisualMedia()
     ) { uri: Uri? ->
         if (uri != null) {
             isUploadingMedia = true
             scope.launch {
-                val mimeType = context.contentResolver.getType(uri) ?: "image/jpeg"
-                val mediaType = if (mimeType.startsWith("video")) "video" else "image"
-                val uploadResult = CloudinaryUploader.uploadUri(context, uri, mimeType)
-                if (uploadResult.isSuccess) {
-                    val url = uploadResult.getOrNull() ?: ""
-                    chatRepo.sendMessage(
-                        conversationId = effectiveConvId,
-                        currentUser = activeSender,
-                        text = if (mediaType == "video") "🎥 Video" else "📷 Photo",
-                        mediaUrl = url,
-                        mediaType = mediaType,
-                        replyTo = replyingToMessage
-                    )
-                    replyingToMessage = null
-                } else {
-                    Toast.makeText(context, "Media upload failed. Check connection.", Toast.LENGTH_SHORT).show()
+                try {
+                    val mimeType = try { context.contentResolver.getType(uri) ?: "image/jpeg" } catch (e: Exception) { "image/jpeg" }
+                    val mediaType = if (mimeType.startsWith("video")) "video" else "image"
+                    val uploadResult = CloudinaryUploader.uploadUri(context, uri, mimeType)
+                    if (uploadResult.isSuccess) {
+                        val url = uploadResult.getOrNull() ?: ""
+                        chatRepo.sendMessage(
+                            conversationId = effectiveConvId,
+                            currentUser = activeSender,
+                            text = if (mediaType == "video") "🎥 Video" else "📷 Photo",
+                            mediaUrl = url,
+                            mediaType = mediaType,
+                            replyTo = replyingToMessage
+                        )
+                        replyingToMessage = null
+                    } else {
+                        Toast.makeText(context, "Media upload failed. Please try again.", Toast.LENGTH_SHORT).show()
+                    }
+                } catch (t: Throwable) {
+                    android.util.Log.e("ChatDetailScreen", "Media pick/upload error: ${t.message}", t)
+                    Toast.makeText(context, "Could not load selected media", Toast.LENGTH_SHORT).show()
+                } finally {
+                    isUploadingMedia = false
                 }
-                isUploadingMedia = false
             }
         }
     }
@@ -322,14 +339,20 @@ fun ChatDetailScreen(
                             Icon(Icons.Default.Close, contentDescription = "Close search", tint = TextDarkMuted)
                         }
                     } else {
-                        if (!isGroup && otherUserId.isNotBlank() && otherUserId != "none") {
+                        if (!isGroup && effectiveOtherId.isNotBlank() && effectiveOtherId != "none") {
                             IconButton(
                                 onClick = {
                                     scope.launch {
-                                        val target = otherUser ?: UserProfile(uid = otherUserId)
-                                        val res = callRepo.startCall(activeSender, target, false)
-                                        if (res.isSuccess) {
-                                            onStartCall(res.getOrNull()!!.id, false)
+                                        val target = otherUser ?: UserProfile(uid = effectiveOtherId)
+                                        if (target.uid.isNotBlank() && target.uid != activeSender.uid) {
+                                            val res = callRepo.startCall(activeSender, target, false)
+                                            if (res.isSuccess) {
+                                                onStartCall(res.getOrNull()!!.id, false)
+                                            } else {
+                                                Toast.makeText(context, "Call failed: please check network", Toast.LENGTH_SHORT).show()
+                                            }
+                                        } else {
+                                            Toast.makeText(context, "User unavailable for calls", Toast.LENGTH_SHORT).show()
                                         }
                                     }
                                 },
@@ -340,10 +363,16 @@ fun ChatDetailScreen(
                             IconButton(
                                 onClick = {
                                     scope.launch {
-                                        val target = otherUser ?: UserProfile(uid = otherUserId)
-                                        val res = callRepo.startCall(activeSender, target, true)
-                                        if (res.isSuccess) {
-                                            onStartCall(res.getOrNull()!!.id, true)
+                                        val target = otherUser ?: UserProfile(uid = effectiveOtherId)
+                                        if (target.uid.isNotBlank() && target.uid != activeSender.uid) {
+                                            val res = callRepo.startCall(activeSender, target, true)
+                                            if (res.isSuccess) {
+                                                onStartCall(res.getOrNull()!!.id, true)
+                                            } else {
+                                                Toast.makeText(context, "Call failed: please check network", Toast.LENGTH_SHORT).show()
+                                            }
+                                        } else {
+                                            Toast.makeText(context, "User unavailable for calls", Toast.LENGTH_SHORT).show()
                                         }
                                     }
                                 },

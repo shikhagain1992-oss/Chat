@@ -210,12 +210,6 @@ class ChatRepository {
      * Real-time stream of all user conversations merging 'conversations' and 'chats'
      */
     fun getConversationsFlow(currentUserId: String): Flow<List<Conversation>> = callbackFlow {
-        if (currentUserId.isEmpty()) {
-            trySend(emptyList())
-            close()
-            return@callbackFlow
-        }
-
         val convMap = mutableMapOf<String, Conversation>()
 
         fun emitMerged() {
@@ -223,16 +217,26 @@ class ChatRepository {
             trySend(sorted)
         }
 
+        val targetUid = currentUserId.ifBlank { FirebaseManager.currentUserId ?: "" }
+
         // Listener 1: 'conversations'
         val listenerConv = conversationsRef.addSnapshotListener { snapshot, error ->
             if (error != null) {
                 Log.w("ChatRepository", "Listen conversations failed: ${error.message}")
                 return@addSnapshotListener
             }
+            val activeUid = targetUid.ifBlank { FirebaseManager.currentUserId ?: "" }
             snapshot?.documents?.forEach { doc ->
                 val data = doc.data ?: return@forEach
                 val participants = extractParticipantsList(data)
-                if (participants.contains(currentUserId) || participants.isEmpty()) {
+                val isUserInConv = activeUid.isEmpty() ||
+                                   participants.contains(activeUid) ||
+                                   doc.id.contains(activeUid) ||
+                                   (data["createdBy"] as? String) == activeUid ||
+                                   (data["lastMessageSenderId"] as? String) == activeUid ||
+                                   (data["senderId"] as? String) == activeUid
+
+                if (isUserInConv) {
                     convMap[doc.id] = parseConversation(doc.id, data)
                 }
             }
@@ -245,12 +249,21 @@ class ChatRepository {
                 Log.w("ChatRepository", "Listen chats failed: ${error.message}")
                 return@addSnapshotListener
             }
+            val activeUid = targetUid.ifBlank { FirebaseManager.currentUserId ?: "" }
             snapshot?.documents?.forEach { doc ->
                 val data = doc.data ?: return@forEach
                 val participants = extractParticipantsList(data)
-                if (participants.contains(currentUserId) || participants.isEmpty()) {
-                    if (!convMap.containsKey(doc.id) || parseConversation(doc.id, data).lastMessageTimestamp > (convMap[doc.id]?.lastMessageTimestamp ?: 0L)) {
-                        convMap[doc.id] = parseConversation(doc.id, data)
+                val isUserInConv = activeUid.isEmpty() ||
+                                   participants.contains(activeUid) ||
+                                   doc.id.contains(activeUid) ||
+                                   (data["createdBy"] as? String) == activeUid ||
+                                   (data["lastMessageSenderId"] as? String) == activeUid ||
+                                   (data["senderId"] as? String) == activeUid
+
+                if (isUserInConv) {
+                    val parsed = parseConversation(doc.id, data)
+                    if (!convMap.containsKey(doc.id) || parsed.lastMessageTimestamp > (convMap[doc.id]?.lastMessageTimestamp ?: 0L)) {
+                        convMap[doc.id] = parsed
                     }
                 }
             }
@@ -570,7 +583,13 @@ class ChatRepository {
         }
 
         fun parseConversation(id: String, data: Map<String, Any?>): Conversation {
-            val participants = extractParticipantsList(data)
+            val rawParticipants = extractParticipantsList(data)
+            val participants = if (rawParticipants.isNotEmpty()) rawParticipants else {
+                if (id.contains("_")) {
+                    val parts = id.split("_")
+                    if (parts.size == 2) listOf(parts[0], parts[1]) else emptyList()
+                } else emptyList()
+            }
             @Suppress("UNCHECKED_CAST")
             val participantNames = (data["participantNames"] as? Map<String, String>)
                 ?: (data["userNames"] as? Map<String, String>)

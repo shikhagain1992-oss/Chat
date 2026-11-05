@@ -1,7 +1,12 @@
 package com.example.ui.screens
 
+import android.net.Uri
 import android.widget.Toast
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.PickVisualMediaRequest
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -16,10 +21,12 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.CameraAlt
 import androidx.compose.material.icons.filled.Email
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.Person
@@ -46,10 +53,16 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
+import coil.compose.AsyncImage
+import com.example.data.remote.CloudinaryUploader
+import com.example.ui.theme.AliceBlue
+import com.example.ui.theme.SoftBlueBorder
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
@@ -287,6 +300,7 @@ fun RegisterScreen(
     onNavigateToLogin: () -> Unit,
     onRegisterSuccess: () -> Unit
 ) {
+    val context = LocalContext.current
     val scope = rememberCoroutineScope()
     var email by remember { mutableStateOf("") }
     var password by remember { mutableStateOf("") }
@@ -296,6 +310,13 @@ fun RegisterScreen(
     var passwordVisible by remember { mutableStateOf(false) }
     var isLoading by remember { mutableStateOf(false) }
     var errorMessage by remember { mutableStateOf<String?>(null) }
+    var selectedPhotoUri by remember { mutableStateOf<Uri?>(null) }
+
+    val photoPickerLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.PickVisualMedia()
+    ) { uri: Uri? ->
+        selectedPhotoUri = uri
+    }
 
     Surface(
         modifier = Modifier
@@ -322,7 +343,73 @@ fun RegisterScreen(
                 text = "Join NexChat Pro community",
                 fontSize = 14.sp,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.padding(top = 4.dp, bottom = 20.dp)
+                modifier = Modifier.padding(top = 4.dp, bottom = 12.dp)
+            )
+
+            // Profile Photo Picker Section
+            Box(
+                modifier = Modifier
+                    .size(92.dp)
+                    .clickable {
+                        photoPickerLauncher.launch(
+                            PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)
+                        )
+                    }
+                    .testTag("register_photo_picker"),
+                contentAlignment = Alignment.Center
+            ) {
+                if (selectedPhotoUri != null) {
+                    AsyncImage(
+                        model = selectedPhotoUri,
+                        contentDescription = "Profile Photo",
+                        contentScale = ContentScale.Crop,
+                        modifier = Modifier
+                            .size(90.dp)
+                            .clip(CircleShape)
+                            .border(2.5.dp, PrimaryBlue, CircleShape)
+                    )
+                } else {
+                    Box(
+                        modifier = Modifier
+                            .size(90.dp)
+                            .clip(CircleShape)
+                            .background(AliceBlue)
+                            .border(2.dp, SoftBlueBorder, CircleShape),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Person,
+                            contentDescription = "Select Photo",
+                            tint = PrimaryBlue,
+                            modifier = Modifier.size(46.dp)
+                        )
+                    }
+                }
+
+                // Camera badge icon
+                Box(
+                    modifier = Modifier
+                        .size(30.dp)
+                        .align(Alignment.BottomEnd)
+                        .clip(CircleShape)
+                        .background(PrimaryBlue)
+                        .border(2.dp, MaterialTheme.colorScheme.background, CircleShape),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.CameraAlt,
+                        contentDescription = "Choose Photo",
+                        tint = Color.White,
+                        modifier = Modifier.size(16.dp)
+                    )
+                }
+            }
+
+            Text(
+                text = if (selectedPhotoUri != null) "Photo selected (tap to change)" else "Add Profile Photo",
+                fontSize = 12.sp,
+                color = if (selectedPhotoUri != null) PrimaryBlue else MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(top = 6.dp, bottom = 14.dp)
             )
 
             errorMessage?.let { error ->
@@ -340,7 +427,7 @@ fun RegisterScreen(
             OutlinedTextField(
                 value = displayName,
                 onValueChange = { displayName = it },
-                label = { Text("Display Name") },
+                label = { Text("Display Name *") },
                 leadingIcon = { Icon(Icons.Default.Person, contentDescription = "Name") },
                 singleLine = true,
                 modifier = Modifier
@@ -354,7 +441,7 @@ fun RegisterScreen(
             OutlinedTextField(
                 value = username,
                 onValueChange = { username = it.filter { char -> char.isLetterOrDigit() || char == '_' } },
-                label = { Text("Username (@handle)") },
+                label = { Text("Username (@handle) *") },
                 leadingIcon = { Text("@", modifier = Modifier.padding(start = 14.dp), fontWeight = FontWeight.Bold) },
                 singleLine = true,
                 modifier = Modifier
@@ -368,7 +455,7 @@ fun RegisterScreen(
             OutlinedTextField(
                 value = email,
                 onValueChange = { email = it },
-                label = { Text("Email Address") },
+                label = { Text("Email Address *") },
                 leadingIcon = { Icon(Icons.Default.Email, contentDescription = "Email") },
                 singleLine = true,
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Email),
@@ -383,7 +470,7 @@ fun RegisterScreen(
             OutlinedTextField(
                 value = phoneNumber,
                 onValueChange = { phoneNumber = it },
-                label = { Text("Phone Number") },
+                label = { Text("Mobile Phone Number * (Mandatory)") },
                 leadingIcon = { Icon(Icons.Default.Phone, contentDescription = "Phone") },
                 singleLine = true,
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Phone),
@@ -398,7 +485,7 @@ fun RegisterScreen(
             OutlinedTextField(
                 value = password,
                 onValueChange = { password = it },
-                label = { Text("Password (min 6 characters)") },
+                label = { Text("Password (min 6 characters) *") },
                 leadingIcon = { Icon(Icons.Default.Lock, contentDescription = "Password") },
                 trailingIcon = {
                     IconButton(onClick = { passwordVisible = !passwordVisible }) {
@@ -425,6 +512,10 @@ fun RegisterScreen(
                         errorMessage = "Please fill in all required fields"
                         return@Button
                     }
+                    if (phoneNumber.trim().length < 8) {
+                        errorMessage = "Mobile phone number is mandatory (min 8 digits)"
+                        return@Button
+                    }
                     if (password.length < 6) {
                         errorMessage = "Password must be at least 6 characters"
                         return@Button
@@ -434,6 +525,14 @@ fun RegisterScreen(
                     errorMessage = null
                     scope.launch {
                         try {
+                            var uploadedPhotoUrl = ""
+                            if (selectedPhotoUri != null) {
+                                val uploadRes = CloudinaryUploader.uploadUri(context, selectedPhotoUri!!, "image/jpeg")
+                                if (uploadRes.isSuccess) {
+                                    uploadedPhotoUrl = uploadRes.getOrNull() ?: ""
+                                }
+                            }
+
                             val authResult = FirebaseManager.auth.createUserWithEmailAndPassword(email.trim(), password).await()
                             val user = authResult.user
                             if (user != null) {
@@ -443,7 +542,7 @@ fun RegisterScreen(
                                     displayName = displayName.trim(),
                                     email = email.trim(),
                                     phoneNumber = phoneNumber.trim(),
-                                    photoUrl = "",
+                                    photoUrl = uploadedPhotoUrl,
                                     about = "Hey there! I am using NexChat Pro.",
                                     isOnline = true,
                                     lastSeen = System.currentTimeMillis(),

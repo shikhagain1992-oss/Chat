@@ -98,7 +98,7 @@ object CloudinaryUploader {
     }
 
     /**
-     * Uploads media from content URI with proper file extension preservation.
+     * Uploads media from content URI with safe downsampling and fallback.
      */
     suspend fun uploadUri(
         context: Context,
@@ -107,26 +107,83 @@ object CloudinaryUploader {
     ): Result<String> = withContext(Dispatchers.IO) {
         try {
             val contentResolver = context.contentResolver
-            val resolvedType = contentResolver.getType(uri) ?: mimeType
-            val extension = MimeTypeMap.getSingleton().getExtensionFromMimeType(resolvedType)
-                ?: if (resolvedType.startsWith("image")) "jpg"
-                   else if (resolvedType.startsWith("video")) "mp4"
-                   else if (resolvedType.startsWith("audio")) "m4a"
-                   else "jpg"
+            val resolvedType = try { contentResolver.getType(uri) ?: mimeType } catch (e: Exception) { mimeType }
+            val isImage = resolvedType.startsWith("image") || mimeType.startsWith("image")
+
+            val extension = if (isImage) "jpg"
+                else if (resolvedType.startsWith("video")) "mp4"
+                else if (resolvedType.startsWith("audio")) "m4a"
+                else "jpg"
 
             val tempFile = File.createTempFile("nexchat_${System.currentTimeMillis()}_", ".$extension", context.cacheDir)
-            contentResolver.openInputStream(uri)?.use { input ->
-                FileOutputStream(tempFile).use { output ->
-                    input.copyTo(output)
+
+            if (isImage) {
+                // Downsample image safely to prevent OutOfMemory and keep upload size under 600KB
+                try {
+                    val options = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+                    contentResolver.openInputStream(uri)?.use { input ->
+                        BitmapFactory.decodeStream(input, null, options)
+                    }
+
+                    val maxDim = 1280
+                    var sampleSize = 1
+                    while ((options.outWidth / sampleSize) > maxDim || (options.outHeight / sampleSize) > maxDim) {
+                        sampleSize *= 2
+                    }
+
+                    val decodeOptions = BitmapFactory.Options().apply { inSampleSize = sampleSize }
+                    val bitmap = contentResolver.openInputStream(uri)?.use { input ->
+                        BitmapFactory.decodeStream(input, null, decodeOptions)
+                    }
+
+                    if (bitmap != null) {
+                        FileOutputStream(tempFile).use { out ->
+                            bitmap.compress(Bitmap.CompressFormat.JPEG, 82, out)
+                        }
+                        bitmap.recycle()
+                    } else {
+                        // Fallback: direct stream copy
+                        contentResolver.openInputStream(uri)?.use { input ->
+                            FileOutputStream(tempFile).use { output -> input.copyTo(output) }
+                        }
+                    }
+                } catch (e: Exception) {
+                    Log.w(TAG, "Image downsampling warning: ${e.message}")
+                    contentResolver.openInputStream(uri)?.use { input ->
+                        FileOutputStream(tempFile).use { output -> input.copyTo(output) }
+                    }
+                }
+            } else {
+                contentResolver.openInputStream(uri)?.use { input ->
+                    FileOutputStream(tempFile).use { output -> input.copyTo(output) }
                 }
             }
 
-            val result = uploadFile(tempFile, resolvedType)
+            val result = uploadFile(tempFile, if (isImage) "image/jpeg" else resolvedType)
             tempFile.delete()
-            result
+
+            if (result.isSuccess) {
+                result
+            } else if (isImage) {
+                // Ultimate fallback for images: instant Base64 data URL
+                val dataUrl = uriToCompressedDataUrl(context, uri)
+                if (dataUrl != null) {
+                    Log.d(TAG, "Cloudinary upload failed; used compressed data URL fallback")
+                    Result.success(dataUrl)
+                } else {
+                    result
+                }
+            } else {
+                result
+            }
         } catch (e: Exception) {
-            Log.e(TAG, "Error reading URI: ${e.message}", e)
-            Result.failure(e)
+            Log.e(TAG, "Error in uploadUri: ${e.message}", e)
+            if (mimeType.startsWith("image")) {
+                val dataUrl = uriToCompressedDataUrl(context, uri)
+                if (dataUrl != null) Result.success(dataUrl) else Result.failure(e)
+            } else {
+                Result.failure(e)
+            }
         }
     }
 

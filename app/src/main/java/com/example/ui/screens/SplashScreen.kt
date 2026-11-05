@@ -50,9 +50,9 @@ fun SplashScreen(
     LaunchedEffect(Unit) {
         scale.animateTo(
             targetValue = 1f,
-            animationSpec = tween(durationMillis = 800, easing = FastOutSlowInEasing)
+            animationSpec = tween(durationMillis = 450, easing = FastOutSlowInEasing)
         )
-        delay(2200)
+        delay(800)
 
         val currentUser = FirebaseManager.currentUser
         if (currentUser != null && currentUser.uid.isNotEmpty()) {
